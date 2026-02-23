@@ -111,6 +111,9 @@ impl App {
                 self.preferences.repeat = Repeat::One;
             }
             Repeat::One => {
+                self.preferences.repeat = Repeat::Radio;
+            }
+            Repeat::Radio => {
                 self.preferences.repeat = Repeat::None;
             }
         }
