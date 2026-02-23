@@ -1804,7 +1804,7 @@ impl App {
                 Repeat::None => "",
                 Repeat::One => "R1",
                 Repeat::All => "R*",
-                Repeat::Radio => "Ra",
+                Repeat::Radio => "📻",
             })
             .fg(self.theme.resolve(&self.theme.foreground)),
         );
