@@ -1212,21 +1212,7 @@ impl App {
         playback.seek_active = state.seek_active;
         // end of queue reached or mpv stopped internally
         if state.idle_active && !self.state.queue.is_empty() {
-            match self.preferences.repeat {
-                Repeat::Radio => {
-                    if let Some(client) = self.client.as_ref() {
-                        match client.instant_playlist(&self.active_song_id.clone(), Some(11)).await {
-                            Ok(tracks) => self.initiate_main_queue(&tracks, 1).await,
-                            Err(_) => self.stop().await,
-                        }
-                    } else {
-                        self.stop().await;
-                    }
-                }
-                _ => {
-                    self.stop().await;
-                }
-            }
+            self.stop().await;
         }
         self.update_mpris_position(self.state.current_playback_state.position);
     }
@@ -1457,6 +1443,17 @@ impl App {
         }
 
         let _ = self.set_window_title(Some(song));
+
+        if self.preferences.repeat == Repeat::Radio
+            && self.state.queue.last().is_some_and(|t| t.id == self.active_song_id)
+        {
+            if let Some(client) = self.client.as_ref() {
+                match client.instant_playlist(&self.active_song_id.clone(), Some(11)).await {
+                    Ok(tracks) => self.append_to_main_queue(&tracks, 1).await,
+                    Err(_) => {}
+                }
+            }
+        }
 
         Ok(())
     }
