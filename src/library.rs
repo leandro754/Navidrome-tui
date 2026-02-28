@@ -178,7 +178,7 @@ impl App {
         };
 
         if let Some(song) = self.state.queue.get(self.state.current_playback_state.current_index) {
-            if song.artist_items.iter().any(|a| a.id == selected_artist) {
+            if song.album_artists.iter().any(|a| a.id == selected_artist) {
                 artist_highlight_style = artist_highlight_style.add_modifier(Modifier::ITALIC);
             }
         }
@@ -204,8 +204,8 @@ impl App {
                 let color = if let Some(song) =
                     self.state.queue.get(self.state.current_playback_state.current_index)
                 {
-                    if song.artist_items.iter().any(|a| a.id == artist.id)
-                        || song.artist_items.iter().any(|a| a.name == artist.name)
+                    if song.album_artists.iter().any(|a| a.id == artist.id)
+                        || song.album_artists.iter().any(|a| a.name == artist.name)
                     {
                         self.theme.primary_color
                     } else {
@@ -654,12 +654,7 @@ impl App {
 
                 text.push_span(Span::styled(song.name.as_str(), Style::default().fg(main_fg)));
 
-                let artist_list = song
-                    .artist_items
-                    .iter()
-                    .map(|a| a.name.as_str())
-                    .collect::<Vec<&str>>()
-                    .join(", ");
+                let artist_list = song.artists.join(", ");
 
                 text.push_span(Span::styled(
                     format!(" › {}", artist_list),
@@ -923,7 +918,9 @@ impl App {
                     if show_disc {
                         cells.push(Cell::from(""));
                     }
-                    cells.push(Cell::from(download_status));
+                    if self.client.is_some() {
+                        cells.push(Cell::from(download_status));
+                    }
                     cells.push(
                         Cell::from(if track.user_data.is_favorite { "♥" } else { "" })
                             .style(Style::default().fg(self.theme.primary_color)),
@@ -1011,12 +1008,16 @@ impl App {
                 }
 
                 // ⇊ (download)
-                cells.push(Cell::from(match track.download_status {
-                    DownloadStatus::Downloaded => Line::from("⇊"),
-                    DownloadStatus::Queued => Line::from("◴"),
-                    DownloadStatus::Downloading => Line::from(self.spinner_stages[self.spinner]),
-                    DownloadStatus::NotDownloaded => Line::from(""),
-                }));
+                if self.client.is_some() {
+                    cells.push(Cell::from(match track.download_status {
+                        DownloadStatus::Downloaded => Line::from("⇊"),
+                        DownloadStatus::Queued => Line::from("◴"),
+                        DownloadStatus::Downloading => {
+                            Line::from(self.spinner_stages[self.spinner])
+                        }
+                        DownloadStatus::NotDownloaded => Line::from(""),
+                    }));
+                }
 
                 // ♥ (favorite)
                 cells.push(
@@ -1065,7 +1066,9 @@ impl App {
         if show_disc {
             widths.push(Constraint::Length(1));
         }
-        widths.push(Constraint::Length(1)); // ⇊
+        if self.client.is_some() {
+            widths.push(Constraint::Length(1)); // ⇊
+        }
         widths.push(Constraint::Length(1)); // ♥
         if show_lyrics_column {
             widths.push(Constraint::Length(1)); // ♪
@@ -1116,7 +1119,9 @@ impl App {
         if show_disc {
             header_cells.push("○");
         }
-        header_cells.push("⇊");
+        if self.client.is_some() {
+            header_cells.push("⇊");
+        }
         header_cells.push("♥");
         if show_lyrics_column {
             header_cells.push("♪");
@@ -1270,12 +1275,16 @@ impl App {
                 }
 
                 // ⇊
-                cells.push(Cell::from(match track.download_status {
-                    DownloadStatus::Downloaded => Line::from("⇊"),
-                    DownloadStatus::Queued => Line::from("◴"),
-                    DownloadStatus::Downloading => Line::from(self.spinner_stages[self.spinner]),
-                    DownloadStatus::NotDownloaded => Line::from(""),
-                }));
+                if self.client.is_some() {
+                    cells.push(Cell::from(match track.download_status {
+                        DownloadStatus::Downloaded => Line::from("⇊"),
+                        DownloadStatus::Queued => Line::from("◴"),
+                        DownloadStatus::Downloading => {
+                            Line::from(self.spinner_stages[self.spinner])
+                        }
+                        DownloadStatus::NotDownloaded => Line::from(""),
+                    }));
+                }
 
                 // ♥
                 cells.push(
@@ -1321,7 +1330,9 @@ impl App {
         if show_disc {
             widths.push(Constraint::Length(1));
         }
-        widths.push(Constraint::Length(1)); // ⇊
+        if self.client.is_some() {
+            widths.push(Constraint::Length(1)); // ⇊
+        }
         widths.push(Constraint::Length(1)); // ♥
         if show_lyrics_column {
             widths.push(Constraint::Length(1)); // ♪
@@ -1367,7 +1378,9 @@ impl App {
         if show_disc {
             header_cells.push("○");
         }
-        header_cells.push("⇊");
+        if self.client.is_some() {
+            header_cells.push("⇊");
+        }
         header_cells.push("♥");
         if show_lyrics_column {
             header_cells.push("♪");
@@ -1564,12 +1577,7 @@ impl App {
         let lines = match current_track {
             Some(song) => {
                 let large = self.cover_art.is_some() && self.preferences.large_art;
-                let artists = song
-                    .artist_items
-                    .iter()
-                    .map(|a| a.name.as_str())
-                    .collect::<Vec<&str>>()
-                    .join(", ");
+                let artists = song.artists.join(", ");
 
                 let mut title = vec![
                     song.name.as_str().fg(self.theme.resolve(&self.theme.foreground)),

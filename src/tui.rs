@@ -111,7 +111,8 @@ pub struct Song {
     pub url: String,
     pub name: String,
     pub artist: String,
-    pub artist_items: Vec<Artist>,
+    pub artists: Vec<String>, // vec of artist names from jellyfin
+    pub album_artists: Vec<Artist>,
     pub album: String,
     #[serde(default)]
     pub album_id: String,
@@ -303,7 +304,7 @@ impl App {
                 keymap
             }
             Err(err) => {
-                eprintln!("Failed to parse keymap: {}", err);
+                eprintln!(" ! Failed to parse keymap: {}", err);
                 log::error!("Failed to parse keymap: {}", err);
                 std::process::exit(1);
             }
@@ -378,7 +379,8 @@ impl App {
             }
         };
 
-        let preferences = Preferences::load().unwrap_or_else(|_| Preferences::new());
+        let preferences = Preferences::load(server_id.clone())
+            .unwrap_or_else(|_| Preferences::new(server_id.clone()));
 
         let (theme, _, picker, user_themes, auto_color) =
             Self::load_theme_from_config(&config, &preferences);
