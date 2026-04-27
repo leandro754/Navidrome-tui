@@ -15,7 +15,7 @@ use crate::helpers::{find_all_subsequences, Searchable, Selectable};
 use crate::keyboard::{search_ranked_indices, search_ranked_refs, Action};
 use crate::themes::theme::Theme;
 use crate::{
-    client::{Artist, Playlist, ScheduledTask},
+    client::{Artist, Playlist},
     keyboard::{ActiveSection, ActiveTab},
     tui::{Filter, Sort},
 };
@@ -57,9 +57,6 @@ pub enum PopupMenu {
         track_based_art: bool,
         downloading: bool,
         sleep_timer_enabled: bool,
-    },
-    GlobalRunScheduledTask {
-        tasks: Vec<ScheduledTask>,
     },
     GlobalShuffle {
         tracks_n: usize,
@@ -201,10 +198,8 @@ pub enum PopupCommand {
     Random,
     Normal,
     ShowFavoritesFirst,
-    RunScheduledTasks,
     ToggleLibrary { library_id: String },
     SelectLibraries,
-    RunScheduledTask { task: Option<ScheduledTask> },
     ChangeCoverArtLayout,
     ToggleSongCoverArt,
     OnlyPlayed,
@@ -257,7 +252,6 @@ impl PopupMenu {
             PopupMenu::GenericMessage { title, .. } => title.to_string(),
             // ---------- Global commands ---------- //
             PopupMenu::GlobalRoot { .. } => "Global Commands".to_string(),
-            PopupMenu::GlobalRunScheduledTask { .. } => "Run a navidrome task".to_string(),
             PopupMenu::GlobalSleepTimer { .. } => "Sleep Timer".to_string(),
             PopupMenu::GlobalShuffle { .. } => "Global Shuffle".to_string(),
             PopupMenu::GlobalSetThemes { .. } => "Set Theme".to_string(),
@@ -307,12 +301,6 @@ impl PopupMenu {
                 PopupAction::new(
                     "Synchronize with navidrome (runs every 10 minutes)".to_string(),
                     PopupCommand::Refresh,
-                    Style::default(),
-                    true,
-                ),
-                PopupAction::new(
-                    "Run a navidrome task".to_string(),
-                    PopupCommand::RunScheduledTasks,
                     Style::default(),
                     true,
                 ),
@@ -377,24 +365,6 @@ impl PopupMenu {
                     false,
                 ),
             ],
-            PopupMenu::GlobalRunScheduledTask { tasks } => {
-                let mut actions = vec![];
-                let mut categories =
-                    tasks.iter().map(|t| t.category.clone()).collect::<Vec<String>>();
-                categories.sort();
-                categories.dedup();
-                for category in categories {
-                    for task in tasks.iter().filter(|t| t.category == category) {
-                        actions.push(PopupAction::new(
-                            format!("{}: {} ({})", category, task.name, task.description),
-                            PopupCommand::RunScheduledTask { task: Some(task.clone()) },
-                            Style::default(),
-                            true,
-                        ));
-                    }
-                }
-                actions
-            }
             PopupMenu::GlobalSelectLibraries { libraries } => {
                 let mut actions = vec![];
 
@@ -1463,18 +1433,6 @@ impl crate::tui::App {
                         self.popup.selected.select_last();
                     }
                 }
-                PopupCommand::RunScheduledTasks => {
-                    let tasks = self.client.as_ref()?.scheduled_tasks().await.unwrap_or(vec![]);
-                    if tasks.is_empty() {
-                        self.set_generic_message(
-                            "No scheduled tasks",
-                            "You may not have permissions to run tasks.",
-                        );
-                        return None;
-                    }
-                    self.popup.current_menu = Some(PopupMenu::GlobalRunScheduledTask { tasks });
-                    self.popup.selected.select_first();
-                }
                 PopupCommand::SelectLibraries => {
                     self.popup.current_menu = Some(PopupMenu::GlobalSelectLibraries {
                         libraries: self.music_libraries.clone(),
@@ -1563,27 +1521,6 @@ impl crate::tui::App {
                     self.popup.selected.select_first();
                 }
                 _ => {}
-            },
-            PopupMenu::GlobalRunScheduledTask { .. } => match action {
-                PopupCommand::RunScheduledTask { task } => {
-                    if let Some(task) = task {
-                        if let Ok(_) = self.client.as_ref()?.run_scheduled_task(&task.id).await {
-                            self.set_generic_message(
-                                &format!("Task {} executed successfully", task.name),
-                                "Try reloading your library to see changes.",
-                            );
-                        } else {
-                            self.set_generic_message(
-                                "Error executing task",
-                                &format!("Failed to execute task {}.", task.name),
-                            );
-                        }
-                    }
-                    return None;
-                }
-                _ => {
-                    self.close_popup();
-                }
             },
             PopupMenu::GlobalSelectLibraries { libraries } => match action {
                 PopupCommand::ToggleLibrary { library_id } => {
@@ -3108,7 +3045,7 @@ impl crate::tui::App {
             let percent_height =
                 ((options.len() + 2) as f32 / window_height as f32 * 100.0).ceil() as u16;
 
-            let width = if let PopupMenu::GlobalRunScheduledTask { .. } = menu { 70 } else { 30 };
+            let width = 30;
 
             let popup_area = popup_area(area, width, percent_height);
             frame.render_widget(Clear, popup_area); // clears the background

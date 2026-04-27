@@ -21,16 +21,19 @@ use std::sync::Arc;
 
 fn sanitize_dl_filename(name: &str) -> String {
     let forbidden = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
-    let mut s: String = name
-        .chars()
-        .map(|c| if forbidden.contains(&c) { '_' } else { c })
-        .collect();
-    while s.ends_with('.') || s.ends_with(' ') { s.pop(); }
-    if s.is_empty() { s = String::from("unknown"); }
-    if s.len() > 200 { s.truncate(200); }
+    let mut s: String =
+        name.chars().map(|c| if forbidden.contains(&c) { '_' } else { c }).collect();
+    while s.ends_with('.') || s.ends_with(' ') {
+        s.pop();
+    }
+    if s.is_empty() {
+        s = String::from("unknown");
+    }
+    if s.len() > 200 {
+        s.truncate(200);
+    }
     s
 }
-
 
 fn make_track(
     client: Option<&Arc<Client>>,
@@ -44,8 +47,8 @@ fn make_track(
         url: match track.download_status {
             DownloadStatus::Downloaded => {
                 // Build the expected Artist/Album folder and find the file by name prefix
-                let artist = track.artists.first().cloned()
-                    .unwrap_or_else(|| track.album_artist.clone());
+                let artist =
+                    track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
                 let safe_artist = sanitize_dl_filename(&artist);
                 let safe_album = sanitize_dl_filename(&track.album);
                 let safe_title = sanitize_dl_filename(&format!("{} - {}", artist, track.name));

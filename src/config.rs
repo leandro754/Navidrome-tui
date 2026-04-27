@@ -44,25 +44,25 @@ pub fn prepare_directories() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = data_dir().expect(" ! Failed getting data directory");
     let config_dir = config_dir().expect(" ! Failed getting config directory");
 
-    let j_data_dir = data_dir.join("navidrome-tui");
-    let j_config_dir = config_dir.join("navidrome-tui");
+    let app_data_dir = data_dir.join("navidrome-tui");
+    let app_config_dir = config_dir.join("navidrome-tui");
 
-    std::fs::create_dir_all(&j_data_dir)?;
-    std::fs::create_dir_all(&j_config_dir)?;
+    std::fs::create_dir_all(&app_data_dir)?;
+    std::fs::create_dir_all(&app_config_dir)?;
 
-    std::fs::create_dir_all(j_data_dir.join("log"))?;
-    std::fs::create_dir_all(j_data_dir.join("covers"))?;
-    std::fs::create_dir_all(j_data_dir.join("states"))?;
-    std::fs::create_dir_all(j_data_dir.join("preferences"))?;
-    std::fs::create_dir_all(j_data_dir.join("downloads"))?;
-    std::fs::create_dir_all(j_data_dir.join("databases"))?;
-    std::fs::create_dir_all(j_data_dir.join("mpv-scripts"))?;
+    std::fs::create_dir_all(app_data_dir.join("log"))?;
+    std::fs::create_dir_all(app_data_dir.join("covers"))?;
+    std::fs::create_dir_all(app_data_dir.join("states"))?;
+    std::fs::create_dir_all(app_data_dir.join("preferences"))?;
+    std::fs::create_dir_all(app_data_dir.join("downloads"))?;
+    std::fs::create_dir_all(app_data_dir.join("databases"))?;
+    std::fs::create_dir_all(app_data_dir.join("mpv-scripts"))?;
 
     // deprecated files, remove this at some point!
-    let _ = std::fs::remove_file(j_data_dir.join("state.json"));
-    let _ = std::fs::remove_file(j_data_dir.join("offline_state.json"));
-    let _ = std::fs::remove_file(j_data_dir.join("seen_artists"));
-    let _ = std::fs::remove_file(j_data_dir.join("server_map.json"));
+    let _ = std::fs::remove_file(app_data_dir.join("state.json"));
+    let _ = std::fs::remove_file(app_data_dir.join("offline_state.json"));
+    let _ = std::fs::remove_file(app_data_dir.join("seen_artists"));
+    let _ = std::fs::remove_file(app_data_dir.join("server_map.json"));
 
     Ok(())
 }
@@ -196,10 +196,6 @@ fn parse_server(server: &serde_yaml::Value) -> SelectedServer {
     SelectedServer { url, auth }
 }
 
-enum OnboardingAuth {
-    UserPass,
-    QuickConnect,
-}
 pub fn initialize_config() {
     let config_dir = match config_dir() {
         Some(dir) => dir,
@@ -235,8 +231,6 @@ pub fn initialize_config() {
         }
     }
 
-    #[allow(unused_assignments)]
-    let mut auth_method = OnboardingAuth::UserPass;
     let mut server_name = String::new();
     let mut server_url = String::new();
     let mut username = String::new();
@@ -244,7 +238,7 @@ pub fn initialize_config() {
 
     println!(" - Thank you for trying navidrome-tui! <3\n");
     println!(" - If you encounter issues or missing features, please report them here:");
-    println!(" - https://github.com/dhonus/navidrome-tui/issues\n");
+    println!(" - https://github.com/leandro754/Navidrome-tui/issues\n");
     println!(" ! Configuration file not found. Please enter the following details:\n");
 
     let http_client = reqwest::blocking::Client::new();
@@ -281,69 +275,51 @@ pub fn initialize_config() {
             .interact_text()
             .unwrap();
 
-        let auth_choice = dialoguer::Select::with_theme(&DialogTheme::default())
-            .with_prompt("How would you like to authenticate?")
-            .items(&["Username & password", "Quick Connect (authorize from another device)"])
-            .default(0)
+        username = Input::with_theme(&DialogTheme::default())
+            .with_prompt("Username")
+            .interact_text()
+            .unwrap();
+
+        password = Password::with_theme(&DialogTheme::default())
+            .allow_empty_password(true)
+            .with_prompt("Password")
             .interact()
             .unwrap();
 
-        auth_method = match auth_choice {
-            0 => OnboardingAuth::UserPass,
-            _ => OnboardingAuth::QuickConnect,
-        };
+        // Navidrome uses Subsonic token authentication.
+        let salt = crate::client::random_string();
+        let token = format!("{:x}", md5::compute(format!("{}{}", password, salt)));
 
-        match auth_method {
-            OnboardingAuth::UserPass => {
-                username = Input::with_theme(&DialogTheme::default())
-                    .with_prompt("Username")
-                    .interact_text()
-                    .unwrap();
-
-                password = Password::with_theme(&DialogTheme::default())
-                    .allow_empty_password(true)
-                    .with_prompt("Password")
-                    .interact()
-                    .unwrap();
-
-                {
-                    // Generate salt and token for Navidrome
-                    let salt = crate::client::random_string();
-                    let token = format!("{:x}", md5::compute(format!("{}{}", password, salt)));
-                    
-                    let url: String = format!("{}/rest/ping.view?u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json", server_url, username, token, salt);
-                    match http_client
-                        .get(&url)
-                        .send() {
-                        Ok(response) => {
-                            if !response.status().is_success() {
-                                println!(" ! Connection failed: {}", response.status());
-                                continue;
-                            }
-                            let value = match response.json::<serde_json::Value>() {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    println!(" ! Error parsing response: {}", e);
-                                    continue;
-                                }
-                            };
-                            let resp = &value["subsonic-response"];
-                            if resp.is_null() || resp["status"].as_str() != Some("ok") {
-                                println!(" ! Error authenticating: {:?}", resp["error"]);
-                                continue;
-                            }
-                        }
-                        Err(e) => {
-                            println!(" ! Error authenticating: {}", e);
-                            continue;
-                        }
+        let url: String = format!(
+            "{}/rest/ping.view?u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json",
+            server_url, username, token, salt
+        );
+        match http_client.get(&url).send() {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    println!(" ! Connection failed: {}", response.status());
+                    continue;
+                }
+                let value = match response.json::<serde_json::Value>() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!(" ! Error parsing response: {}", e);
+                        continue;
                     }
+                };
+                let resp = &value["subsonic-response"];
+                if resp.is_null() || resp["status"].as_str() != Some("ok") {
+                    println!(" ! Error authenticating: {:?}", resp["error"]);
+                    continue;
                 }
             }
-            OnboardingAuth::QuickConnect => {}
+            Err(e) => {
+                println!(" ! Error authenticating: {}", e);
+                continue;
+            }
         }
 
-                let confirm_prompt = format!(
+        let confirm_prompt = format!(
             "Success! Use server '{}' ({}) as user '{}'?",
             server_name.trim(),
             server_url.trim(),
@@ -357,7 +333,9 @@ pub fn initialize_config() {
             .interact_opt()
             .unwrap()
         {
-            Some(true) => { ok = true; }
+            Some(true) => {
+                ok = true;
+            }
             _ => {
                 counter += 1;
                 if counter >= 3 {

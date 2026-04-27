@@ -19,16 +19,6 @@ pub struct TempDiscographyAlbum {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ScheduledTask {
-    pub name: String,
-    pub id: String,
-    pub state: String,
-    pub last_execution_result: Option<String>,
-    pub category: String,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlaylistResult {
     pub items: Vec<DiscographySong>,
     pub total_record_count: u64,
@@ -49,8 +39,6 @@ pub struct Client {
 #[derive(Debug, Clone)]
 pub enum AuthMethod {
     UserPass { username: String, password: String },
-    #[allow(dead_code)]
-    QuickConnect,
 }
 
 #[derive(Debug, Clone)]
@@ -252,12 +240,15 @@ impl Client {
             .build()
             .expect("! Failed to build HTTP client");
         let device_id = random_string();
-        
+
         let salt = random_string();
         let token = format!("{:x}", md5::compute(format!("{}{}", password, salt)));
 
-        let url = format!("{}/rest/ping.view?u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json", server_url, username, token, salt);
-        
+        let url = format!(
+            "{}/rest/ping.view?u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json",
+            server_url, username, token, salt
+        );
+
         let response = http_client.get(&url).send().await;
 
         match response {
@@ -269,13 +260,14 @@ impl Client {
                         std::process::exit(1);
                     }
                 };
-                
+
                 if value.response.status != "ok" {
                     println!(" ! Auth Error: {:?}", value.response.error);
                     std::process::exit(1);
                 }
 
-                let sanitized_url = server_url.replace("://", "_").replace(":", "_").replace("/", "_");
+                let sanitized_url =
+                    server_url.replace("://", "_").replace(":", "_").replace("/", "_");
                 let server_id = format!("{}-{}", sanitized_url, username); // Subsonic doesn't return server ID
 
                 Some(Arc::new(Self {
@@ -313,18 +305,15 @@ impl Client {
     }
 
     fn auth_query(&self) -> String {
-        format!("u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json", self.user_name, self.token, self.salt)
+        format!(
+            "u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json",
+            self.user_name, self.token, self.salt
+        )
     }
 
     pub async fn validate_token(&self) -> bool {
         let url = format!("{}/rest/ping.view?{}", self.base_url, self.auth_query());
-        match self
-            .http_client
-            .get(&url)
-            .timeout(Duration::from_secs(5))
-            .send()
-            .await
-        {
+        match self.http_client.get(&url).timeout(Duration::from_secs(5)).send().await {
             Ok(response) => {
                 if response.status().is_success() {
                     let root: Result<SubsonicResponseRoot, _> = response.json().await;
@@ -372,7 +361,10 @@ impl Client {
     }
 
     async fn probe_latency(client: &reqwest::Client, base: &str) -> Option<u128> {
-        let url = format!("{}/rest/ping.view?v=1.16.1&c=navidrome-tui&f=json", base.trim_end_matches('/'));
+        let url = format!(
+            "{}/rest/ping.view?v=1.16.1&c=navidrome-tui&f=json",
+            base.trim_end_matches('/')
+        );
         let start = std::time::Instant::now();
 
         match client.get(&url).timeout(Duration::from_secs(10)).send().await {
@@ -431,7 +423,8 @@ impl Client {
         if let Some(indexes) = root.response.indexes {
             for index in indexes.index {
                 for a in index.artist {
-                    let is_match = search_term.is_empty() || a.name.to_lowercase().contains(&search_term.to_lowercase());
+                    let is_match = search_term.is_empty()
+                        || a.name.to_lowercase().contains(&search_term.to_lowercase());
                     if is_match {
                         artists.push(Artist {
                             id: a.id,
@@ -456,11 +449,17 @@ impl Client {
         let mut all_albums = vec![];
 
         loop {
-            let mut url = format!("{}/rest/getAlbumList2.view?type=alphabeticalByArtist&size={}&offset={}&{}", self.base_url, size, offset, self.auth_query());
+            let mut url = format!(
+                "{}/rest/getAlbumList2.view?type=alphabeticalByArtist&size={}&offset={}&{}",
+                self.base_url,
+                size,
+                offset,
+                self.auth_query()
+            );
             if let Some(lib) = library_id {
                 url.push_str(&format!("&musicFolderId={}", lib));
             }
-            
+
             let req = self.http_client.get(&url);
             let root: SubsonicResponseRoot = match self.get_json_with_retry(req).await {
                 Ok(parsed) => parsed,
@@ -477,7 +476,11 @@ impl Client {
                     all_albums.push(Album {
                         id: a.id.clone(),
                         name: a.name.clone(),
-                        album_artists: vec![Artist { id: a.artist_id.unwrap_or_default(), name: a.artist.unwrap_or_default(), ..Default::default() }],
+                        album_artists: vec![Artist {
+                            id: a.artist_id.unwrap_or_default(),
+                            name: a.artist.unwrap_or_default(),
+                            ..Default::default()
+                        }],
                         date_created: a.created.unwrap_or_default(),
                         ..Default::default()
                     });
@@ -539,8 +542,16 @@ impl Client {
         Ok(all_songs)
     }
 
-    pub async fn search_tracks(&self, search_term: String) -> Result<Vec<DiscographySong>, reqwest::Error> {
-        let url = format!("{}/rest/search3.view?query={}&songCount=100&{} ", self.base_url, search_term, self.auth_query());
+    pub async fn search_tracks(
+        &self,
+        search_term: String,
+    ) -> Result<Vec<DiscographySong>, reqwest::Error> {
+        let url = format!(
+            "{}/rest/search3.view?query={}&songCount=100&{} ",
+            self.base_url,
+            search_term,
+            self.auth_query()
+        );
         let req = self.http_client.get(&url);
 
         let root: SubsonicResponseRoot = match self.get_json_with_retry(req).await {
@@ -569,9 +580,14 @@ impl Client {
         _only_unplayed: bool,
         only_favorite: bool,
     ) -> Result<Vec<DiscographySong>, Box<dyn Error>> {
-        let url = format!("{}/rest/getRandomSongs.view?size={}&{}", self.base_url, tracks_n, self.auth_query());
+        let url = format!(
+            "{}/rest/getRandomSongs.view?size={}&{}",
+            self.base_url,
+            tracks_n,
+            self.auth_query()
+        );
         // Subsonic doesn't really have "only_played" / "only_unplayed" natively in random filter,
-        // we can filter manually if needed, but it's hard. 
+        // we can filter manually if needed, but it's hard.
         let req = self.http_client.get(&url);
 
         let root: SubsonicResponseRoot = match self.get_json_with_retry(req).await {
@@ -587,7 +603,9 @@ impl Client {
             if let Some(list) = rs.song {
                 for s in list {
                     let mut keep = true;
-                    if only_favorite && s.starred.is_none() { keep = false; }
+                    if only_favorite && s.starred.is_none() {
+                        keep = false;
+                    }
                     if keep {
                         songs.push(self.subsonic_song_to_discography_song(s));
                     }
@@ -603,7 +621,13 @@ impl Client {
         tracks_n: Option<usize>,
     ) -> Result<Vec<DiscographySong>, Box<dyn Error>> {
         let size = tracks_n.unwrap_or(50);
-        let url = format!("{}/rest/getSimilarSongs2.view?id={}&count={}&{}", self.base_url, track_id, size, self.auth_query());
+        let url = format!(
+            "{}/rest/getSimilarSongs2.view?id={}&count={}&{}",
+            self.base_url,
+            track_id,
+            size,
+            self.auth_query()
+        );
         let req = self.http_client.get(&url);
 
         let response = req.send().await;
@@ -631,12 +655,13 @@ impl Client {
         &self,
         item_id: &String,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let url = format!("{}/rest/getCoverArt.view?id={}&size=512&{}", self.base_url, item_id, self.auth_query());
-        let response = self
-            .http_client
-            .get(&url)
-            .send()
-            .await?;
+        let url = format!(
+            "{}/rest/getCoverArt.view?id={}&size=512&{}",
+            self.base_url,
+            item_id,
+            self.auth_query()
+        );
+        let response = self.http_client.get(&url).send().await?;
 
         let content_type = match response.headers().get("Content-Type") {
             Some(c) => c.to_str()?,
@@ -664,16 +689,18 @@ impl Client {
         Ok(format!("{}.{}", item_id, extension))
     }
 
-    
     pub async fn playlists(&self, search_term: String) -> Result<Vec<Playlist>, reqwest::Error> {
         let url = format!("{}/rest/getPlaylists.view?{}", self.base_url, self.auth_query());
-        let root: SubsonicResponseRoot = match self.get_json_with_retry(self.http_client.get(&url)).await {
-            Ok(d) => d, Err(_) => return Ok(vec![])
-        };
+        let root: SubsonicResponseRoot =
+            match self.get_json_with_retry(self.http_client.get(&url)).await {
+                Ok(d) => d,
+                Err(_) => return Ok(vec![]),
+            };
         let mut results = vec![];
         if let Some(pl) = root.response.playlists {
             for p in pl.playlist {
-                let matches = search_term.is_empty() || p.name.to_lowercase().contains(&search_term.to_lowercase());
+                let matches = search_term.is_empty()
+                    || p.name.to_lowercase().contains(&search_term.to_lowercase());
                 if matches {
                     results.push(Playlist {
                         id: p.id,
@@ -688,90 +715,165 @@ impl Client {
         Ok(results)
     }
 
-        pub async fn scheduled_tasks(&self) -> Result<Vec<ScheduledTask>, reqwest::Error> { Ok(vec![]) }
-    pub async fn run_scheduled_task(&self, _id: &str) -> Result<(), reqwest::Error> { Ok(()) }
-    pub async fn playlist(&self, id: &str, _limit: Option<usize>) -> Result<PlaylistResult, reqwest::Error> {
-        let url = format!("{}/rest/getPlaylist.view?id={}&{}", self.base_url, id, self.auth_query());
-        let root: SubsonicResponseRoot = match self.get_json_with_retry(self.http_client.get(&url)).await {
-            Ok(d) => d, Err(_) => return Ok(PlaylistResult { items: vec![], total_record_count: 0 })
-        };
+    pub async fn playlist(
+        &self,
+        id: &str,
+        _limit: Option<usize>,
+    ) -> Result<PlaylistResult, reqwest::Error> {
+        let url =
+            format!("{}/rest/getPlaylist.view?id={}&{}", self.base_url, id, self.auth_query());
+        let root: SubsonicResponseRoot =
+            match self.get_json_with_retry(self.http_client.get(&url)).await {
+                Ok(d) => d,
+                Err(_) => return Ok(PlaylistResult { items: vec![], total_record_count: 0 }),
+            };
         if let Some(pl) = root.response.playlist {
             let total = pl.song_count;
-            let items = pl.entry.into_iter().map(|s| self.subsonic_song_to_discography_song(s)).collect();
+            let items =
+                pl.entry.into_iter().map(|s| self.subsonic_song_to_discography_song(s)).collect();
             return Ok(PlaylistResult { items, total_record_count: total });
         }
         Ok(PlaylistResult { items: vec![], total_record_count: 0 })
     }
 
-    pub async fn stopped(&self, id: Option<String>, position: Option<u64>) -> Result<(), reqwest::Error> {
+    pub async fn stopped(
+        &self,
+        id: Option<String>,
+        position: Option<u64>,
+    ) -> Result<(), reqwest::Error> {
         // Scrobble as submission=true when track stops (finished)
         if let Some(track_id) = id {
             let time_ms = position.unwrap_or(0) / 10_000;
-            let url = format!("{}/rest/scrobble.view?id={}&time={}&submission=true&{}", self.base_url, track_id, time_ms, self.auth_query());
+            let url = format!(
+                "{}/rest/scrobble.view?id={}&time={}&submission=true&{}",
+                self.base_url,
+                track_id,
+                time_ms,
+                self.auth_query()
+            );
             let _ = self.http_client.get(&url).send().await;
         }
         Ok(())
     }
     pub async fn playing(&self, id: &str) -> Result<(), reqwest::Error> {
         // Scrobble submission=false when starting playback ("Now playing")
-        let url = format!("{}/rest/scrobble.view?id={}&submission=false&{}", self.base_url, id, self.auth_query());
+        let url = format!(
+            "{}/rest/scrobble.view?id={}&submission=false&{}",
+            self.base_url,
+            id,
+            self.auth_query()
+        );
         let _ = self.http_client.get(&url).send().await;
         Ok(())
     }
-    pub async fn move_playlist_item(&self, _item_id: &str, _playlist_id: &str, _new_index: usize) -> Result<(), reqwest::Error> { Ok(()) }
-    pub async fn add_to_playlist(&self, track_id: &str, playlist_id: &str) -> Result<(), reqwest::Error> {
-        let url = format!("{}/rest/updatePlaylist.view?playlistId={}&songIdToAdd={}&{}", self.base_url, playlist_id, track_id, self.auth_query());
+    pub async fn move_playlist_item(
+        &self,
+        _item_id: &str,
+        _playlist_id: &str,
+        _new_index: usize,
+    ) -> Result<(), reqwest::Error> {
+        Ok(())
+    }
+    pub async fn add_to_playlist(
+        &self,
+        track_id: &str,
+        playlist_id: &str,
+    ) -> Result<(), reqwest::Error> {
+        let url = format!(
+            "{}/rest/updatePlaylist.view?playlistId={}&songIdToAdd={}&{}",
+            self.base_url,
+            playlist_id,
+            track_id,
+            self.auth_query()
+        );
         let _ = self.http_client.get(&url).send().await;
         Ok(())
     }
-    pub async fn remove_from_playlist(&self, track_id: &str, playlist_id: &str) -> Result<(), reqwest::Error> {
-        let url = format!("{}/rest/updatePlaylist.view?playlistId={}&songIndexToRemove={}&{}", self.base_url, playlist_id, track_id, self.auth_query());
+    pub async fn remove_from_playlist(
+        &self,
+        track_id: &str,
+        playlist_id: &str,
+    ) -> Result<(), reqwest::Error> {
+        let url = format!(
+            "{}/rest/updatePlaylist.view?playlistId={}&songIndexToRemove={}&{}",
+            self.base_url,
+            playlist_id,
+            track_id,
+            self.auth_query()
+        );
         let _ = self.http_client.get(&url).send().await;
         Ok(())
     }
     pub async fn update_playlist(&self, playlist: &Playlist) -> Result<(), reqwest::Error> {
-        let url = format!("{}/rest/updatePlaylist.view?playlistId={}&name={}&{}", self.base_url, playlist.id, playlist.name, self.auth_query());
+        let url = format!(
+            "{}/rest/updatePlaylist.view?playlistId={}&name={}&{}",
+            self.base_url,
+            playlist.id,
+            playlist.name,
+            self.auth_query()
+        );
         let _ = self.http_client.get(&url).send().await;
         Ok(())
     }
     pub async fn delete_playlist(&self, id: &str) -> Result<(), reqwest::Error> {
-        let url = format!("{}/rest/deletePlaylist.view?id={}&{}", self.base_url, id, self.auth_query());
+        let url =
+            format!("{}/rest/deletePlaylist.view?id={}&{}", self.base_url, id, self.auth_query());
         let _ = self.http_client.get(&url).send().await;
         Ok(())
     }
-    pub async fn create_playlist(&self, name: &str, _public: bool) -> Result<String, reqwest::Error> {
-        let url = format!("{}/rest/createPlaylist.view?name={}&{}", self.base_url, name, self.auth_query());
+    pub async fn create_playlist(
+        &self,
+        name: &str,
+        _public: bool,
+    ) -> Result<String, reqwest::Error> {
+        let url = format!(
+            "{}/rest/createPlaylist.view?name={}&{}",
+            self.base_url,
+            name,
+            self.auth_query()
+        );
         // Parse the response to get the new playlist id
-        if let Ok(root) = self.get_json_with_retry::<SubsonicResponseRoot>(self.http_client.get(&url)).await {
+        if let Ok(root) =
+            self.get_json_with_retry::<SubsonicResponseRoot>(self.http_client.get(&url)).await
+        {
             if let Some(pl) = root.response.playlist {
                 return Ok(pl.id);
             }
         }
         Ok(String::new())
     }
-    pub fn quick_connect(_base_url: &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Arc<Self>>> + Send>> {
-        Box::pin(async { None })
-    }
     pub fn song_url_sync(&self, song_id: &String, _transcoding: Option<&Transcoding>) -> String {
         format!("{}/rest/stream.view?id={}&{}", self.base_url, song_id, self.auth_query())
     }
 
     pub async fn report_progress(&self, pr: &ProgressReport) -> Result<(), reqwest::Error> {
-        let time = pr.position_ticks / 10_000_000; 
+        let time = pr.position_ticks / 10_000_000;
         // if paused, just report time, if finished, scrobble (submission=true)
-        // Since we don't have perfect playback state, we assume if it's over 30s we can scrobble or 
+        // Since we don't have perfect playback state, we assume if it's over 30s we can scrobble or
         // just submission=false for progress
         let submission = "false";
-        let url = format!("{}/rest/scrobble.view?id={}&time={}&submission={}&{}", self.base_url, pr.item_id, time, submission, self.auth_query());
+        let url = format!(
+            "{}/rest/scrobble.view?id={}&time={}&submission={}&{}",
+            self.base_url,
+            pr.item_id,
+            time,
+            submission,
+            self.auth_query()
+        );
         let client = reqwest::Client::new();
         let _ = client.post(&url).send().await;
         Ok(())
     }
 
-    pub async fn set_favorite(&self, item_id: &String, favorite: bool) -> Result<(), reqwest::Error> {
+    pub async fn set_favorite(
+        &self,
+        item_id: &String,
+        favorite: bool,
+    ) -> Result<(), reqwest::Error> {
         // Use Subsonic star/unstar endpoints (correct way) instead of setRating
         let action = if favorite { "star" } else { "unstar" };
-        let url = format!("{}/rest/{}.view?id={}&{}", self.base_url, action, item_id, self.auth_query());
+        let url =
+            format!("{}/rest/{}.view?id={}&{}", self.base_url, action, item_id, self.auth_query());
         let _ = self.http_client.get(&url).send().await;
         Ok(())
     }
@@ -815,7 +917,8 @@ impl Client {
                 return final_req.send().await?.json::<T>().await;
             }
 
-            tokio::time::sleep(std::time::Duration::from_millis(attempt as u64 * RETRY_DELAY_MS)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(attempt as u64 * RETRY_DELAY_MS))
+                .await;
         }
     }
 
@@ -833,7 +936,8 @@ impl Client {
         d_song.run_time_ticks = ticks;
         d_song.user_data.is_favorite = s.starred.is_some();
         d_song.artists = vec![artist_name.clone()];
-        d_song.album_artists = vec![Artist { id: String::new(), name: artist_name.clone(), ..Default::default() }];
+        d_song.album_artists =
+            vec![Artist { id: String::new(), name: artist_name.clone(), ..Default::default() }];
         d_song.genres = s.genre.into_iter().collect();
         d_song
     }
@@ -859,8 +963,12 @@ pub struct Artist {
 }
 
 impl Searchable for Artist {
-    fn id(&self) -> &str { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -903,8 +1011,12 @@ pub struct DiscographySong {
 }
 
 impl Searchable for DiscographySong {
-    fn id(&self) -> &str { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl<'r> FromRow<'r, sqlx::sqlite::SqliteRow> for DiscographySong {
@@ -919,17 +1031,20 @@ impl<'r> FromRow<'r, sqlx::sqlite::SqliteRow> for DiscographySong {
             parent_id: row.get("parent_id"),
             premiere_date: row.get("premiere_date"),
             server_id: row.get("server_id"),
-            album_artists: serde_json::from_str(row.get::<&str, _>("album_artists")).unwrap_or_default(),
+            album_artists: serde_json::from_str(row.get::<&str, _>("album_artists"))
+                .unwrap_or_default(),
             artists: serde_json::from_str(row.get::<&str, _>("artists")).unwrap_or_default(),
             genres: serde_json::from_str(row.get::<&str, _>("genres")).unwrap_or_default(),
-            user_data: serde_json::from_str(row.get::<&str, _>("user_data")).unwrap_or_else(|_| DiscographySongUserData::default()),
+            user_data: serde_json::from_str(row.get::<&str, _>("user_data"))
+                .unwrap_or_else(|_| DiscographySongUserData::default()),
             has_lyrics: row.get::<i32, _>("has_lyrics") != 0,
             index_number: row.get("index_number"),
             parent_index_number: row.get("parent_index_number"),
             production_year: row.get("production_year"),
             run_time_ticks: row.get("run_time_ticks"),
             playlist_item_id: row.get("playlist_item_id"),
-            download_status: serde_json::from_str(row.get::<&str, _>("download_status")).unwrap_or(DownloadStatus::NotDownloaded),
+            download_status: serde_json::from_str(row.get::<&str, _>("download_status"))
+                .unwrap_or(DownloadStatus::NotDownloaded),
             disliked: row.get::<i32, _>("disliked") != 0,
             ..Default::default()
         })
@@ -944,7 +1059,6 @@ pub struct LibraryView {
     #[serde(skip)]
     pub selected: bool,
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Lyric {
@@ -977,8 +1091,12 @@ pub struct Album {
 }
 
 impl Searchable for Album {
-    fn id(&self) -> &str { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -994,6 +1112,10 @@ pub struct Playlist {
 }
 
 impl Searchable for Playlist {
-    fn id(&self) -> &str { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }

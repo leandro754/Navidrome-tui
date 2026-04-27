@@ -1,5 +1,5 @@
 {
-  description = "jellyfin-tui";
+  description = "navidrome-tui";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -70,7 +70,7 @@
           '';
 
           postInstall = lib.optionalString stdenv.hostPlatform.isLinux ''
-            install -Dm644 src/extra/jellyfin-tui.desktop $out/share/applications/jellyfin-tui.desktop
+            install -Dm644 src/extra/navidrome-tui.desktop $out/share/applications/navidrome-tui.desktop
           '';
         };
 
@@ -100,14 +100,14 @@
             rustc = toolchain;
           };
 
-          jellyfin-tui = pkgs.callPackage package { rustPlatform = customRustPlatform; };
+          navidrome-tui = pkgs.callPackage package { rustPlatform = customRustPlatform; };
         in
         {
-          default = jellyfin-tui;
+          default = navidrome-tui;
 
-          inherit jellyfin-tui;
+          inherit navidrome-tui;
 
-          debug = jellyfin-tui.overrideAttrs (
+          debug = navidrome-tui.overrideAttrs (
             newAttrs: oldAttrs: {
 
               pname = oldAttrs.pname + "-debug";

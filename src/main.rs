@@ -1,4 +1,4 @@
-﻿#![cfg_attr(target_os = "macos", allow(unexpected_cfgs))]
+#![cfg_attr(target_os = "macos", allow(unexpected_cfgs))]
 mod client;
 mod config;
 mod database;
@@ -97,7 +97,7 @@ fn main() {
         log::error!("Panic occurred: {}", info);
         log::error!("Backtrace:\n{}", bt);
         eprintln!("\n ! (×_×) panik: {}", info);
-        eprintln!(" ! If you think this is a bug, please report it at https://github.com/dhonus/navidrome-tui/issues");
+        eprintln!(" ! If you think this is a bug, please report it at https://github.com/leandro754/Navidrome-tui/issues");
     }));
 
     match config::prepare_directories() {
@@ -130,10 +130,7 @@ fn main() {
 
     config::initialize_config();
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap();
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
 
     rt.block_on(async {
         let mut app = tui::App::new(offline, force_server_select).await;

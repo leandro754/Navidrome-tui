@@ -290,8 +290,7 @@ const DEFAULT_BINDINGS: &[(KeyCombination, Action)] = &[
     (key!(esc), Action::Cancel),
     (key!(shift - '/'), Action::Help),
     (key!('?'), Action::Help),
-    (key!(f1), Action::Help),           // universal fallback for all keyboard layouts
-
+    (key!(f1), Action::Help), // universal fallback for all keyboard layouts
     // text editing
     (key!(backspace), Action::DeleteBack),
     (key!(delete), Action::Delete),

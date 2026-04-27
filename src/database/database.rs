@@ -645,7 +645,11 @@ pub async fn data_updater(
         };
 
         if albums.is_empty() {
-            log::warn!("Library '{}' (id={}) returned ZERO albums from navidrome", lib.name, lib.id);
+            log::warn!(
+                "Library '{}' (id={}) returned ZERO albums from navidrome",
+                lib.name,
+                lib.id
+            );
         }
 
         for (i, album) in albums.iter().enumerate() {
@@ -1227,7 +1231,8 @@ async fn track_process_queued_download(
             let tx = tx.clone();
             let url = client.song_url_sync(&track.id, transcoding);
             // Organize by Artist / Album subfolder with readable names
-            let artist = track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
+            let artist =
+                track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
             let safe_artist = sanitize_filename(&artist);
             let safe_album = sanitize_filename(&track.album);
             let file_dir = data_dir.join(&safe_artist).join(&safe_album);
@@ -1328,7 +1333,8 @@ async fn track_download_and_update(
                     "audio/wav" | "audio/x-wav" => "wav",
                     "audio/aiff" | "audio/x-aiff" => "aiff",
                     _ => "mp3",
-                }.to_string();
+                }
+                .to_string();
             }
         }
         let mut last_update = Instant::now();
@@ -1380,7 +1386,8 @@ async fn track_download_and_update(
                 .await;
 
                 // Build readable filename: Artist - Title.ext
-                let artist = track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
+                let artist =
+                    track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
                 let safe_name = sanitize_filename(&format!("{} - {}", artist, track.name));
                 let file_path = file_dir.join(format!("{}.{}", safe_name, detected_ext));
                 if let Err(e) = fs::rename(&temp_file, &file_path).await {
@@ -1564,7 +1571,8 @@ pub async fn mark_missing(
     let mut deleted_artists = false;
     let mut deleted_playlists = false;
     let mut album_paths_to_delete: Vec<PathBuf> = Vec::new();
-    let data_dir = dirs::data_dir().unwrap().join("navidrome-tui").join("downloads").join(server_id);
+    let data_dir =
+        dirs::data_dir().unwrap().join("navidrome-tui").join("downloads").join(server_id);
 
     let mut tx = pool.begin().await?;
 
@@ -1848,10 +1856,8 @@ pub async fn mark_missing(
 /// Replaces forbidden characters with underscores and trims trailing dots/spaces.
 fn sanitize_filename(name: &str) -> String {
     let forbidden = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
-    let mut s: String = name
-        .chars()
-        .map(|c| if forbidden.contains(&c) { '_' } else { c })
-        .collect();
+    let mut s: String =
+        name.chars().map(|c| if forbidden.contains(&c) { '_' } else { c }).collect();
     // Windows forbids trailing dots and spaces
     while s.ends_with('.') || s.ends_with(' ') {
         s.pop();

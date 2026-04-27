@@ -630,7 +630,6 @@ impl App {
             AuthMethod::UserPass { username, password } => {
                 Client::new(&base_url, username, password).await?
             }
-            AuthMethod::QuickConnect => Client::quick_connect(&base_url).await?,
         };
         if client.token.is_empty() {
             println!(" ! Failed to authenticate. Please check your credentials and try again.");

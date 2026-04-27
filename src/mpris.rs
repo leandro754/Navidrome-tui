@@ -14,8 +14,11 @@ pub struct MprisControls {
 pub fn mpris() -> Result<MprisControls, Box<dyn std::error::Error>> {
     #[cfg(not(windows))]
     {
-        let config =
-            PlatformConfig { dbus_name: "navidrome-tui", display_name: "navidrome-tui", hwnd: None };
+        let config = PlatformConfig {
+            dbus_name: "navidrome-tui",
+            display_name: "navidrome-tui",
+            hwnd: None,
+        };
 
         match MediaControls::new(config) {
             Ok(controls) => {
@@ -75,8 +78,8 @@ mod windows {
     use std::io::Error;
     use std::mem;
 
-    use windows::core::PCWSTR;
     use windows::core::w;
+    use windows::core::PCWSTR;
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{

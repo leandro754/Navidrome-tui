@@ -1,282 +1,219 @@
-# jellyfin-tui
+# navidrome-tui
 
-Jellyfin-tui is a (music) streaming client for the Jellyfin media server. Inspired by CMUS and others,
-its goal is to offer a self-hosted, terminal music player with all the modern features you need.
+`navidrome-tui` is a terminal music client for
+[Navidrome](https://www.navidrome.org/) and other servers that expose a
+compatible Subsonic API.
+
+The current codebase is centered on Navidrome: authentication, library loading,
+playback URLs, favorites, playlists and progress reporting go through
+Subsonic-compatible endpoints, while audio playback is handled locally through
+`mpv`.
+
+## Current Status
+
+This is an active Navidrome/Subsonic TUI. The application name, config paths and
+package metadata use `navidrome-tui`; remaining compatibility work should keep
+the user-facing surface focused on Navidrome and the Subsonic API.
+
+The intended flow is:
+
+1. Connect to a Navidrome server.
+2. Cache library metadata locally.
+3. Stream or download tracks.
+4. Use the TUI as a focused terminal music player.
+
+## Technology
+
+- Rust 2021
+- Tokio async runtime
+- Reqwest HTTP client
+- Navidrome/Subsonic REST API
+- Ratatui + Crossterm terminal UI
+- ratatui-image for terminal cover art
+- libmpv2/mpv for playback
+- SQLite via SQLx for cache, downloads and offline metadata
+- Souvlaki for platform media controls
+- Discord Rich Presence support
+- YAML configuration with Serde
 
 ## Features
 
-- stream your music from Jellyfin
-- sixel **cover image**, courtesy of [ratatui-image](https://github.com/benjajaja/ratatui-image)
-- lyrics with autoscroll (Jellyfin > 10.9)
-- custom themes, color extraction from album art + smooth interpolated transitions
-- spotify-like double queue with order control, etc.
-- full offline mode with metadata caching, track downloads, background updates and slow network fallback
-- last.fm scrobbling, you need [jellyfin-plugin-lastfm](https://github.com/jesseward/jellyfin-plugin-lastfm)
-- multi-library support
-- vim-style keybindings
-- MPRIS integration
-- playlists (play/create/edit)
-- transcoding, shuffle, repeat modes, the works
-- works over ssh (and tmux)
-- sleep timer
-- fast and just kind of nifty really
-
-### Planned features
-
-- other media types (movies, tv shows)
-- jellyfin-wide remote control and much more
-- if there is a feature you'd like to see, please open an issue :)
+- Stream music from Navidrome through the Subsonic API
+- Browse artists, albums, tracks and playlists
+- Search artists, albums and tracks
+- Queue management with Spotify-like queue behavior
+- Shuffle, repeat-one, repeat-all and radio-style playback modes
+- Favorites/starred tracks using Subsonic star/unstar endpoints
+- Track downloads and offline playback
+- Background metadata cache updates
+- Album art in terminals with image protocol support
+- Custom themes with album-art color extraction
+- Configurable key bindings
+- mpv option passthrough and mpv script loading
+- MPRIS/media-key integration where supported
+- Optional Discord Rich Presence
 
 ## Screenshots
 
-![image](.github/screen.gif)
+![Main screen](.github/screen.gif)
+
+![Queue](.github/queue.png)
+
+![Search](.github/search.png)
+
+## Requirements
+
+You need a running Navidrome server and a terminal capable of running a modern
+TUI application.
+
+Build/runtime dependencies:
+
+- Rust toolchain
+- mpv
+- libmpv development files
+- SQLite
+- OpenSSL or Rustls TLS support, depending on the selected Cargo feature
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt install mpv libmpv-dev sqlite3 libssl-dev pkg-config
+```
+
+On Arch Linux:
+
+```bash
+sudo pacman -S mpv sqlite pkgconf
+```
+
+On macOS:
+
+```bash
+brew install mpv pkg-config
+```
+
+On Windows, install `mpv` and make sure `libmpv-2.dll` is available to the
+program at runtime. Do not commit DLL files to this repository.
 
 ## Installation
 
-### Arch Linux
-
-[jellyfin-tui](https://aur.archlinux.org/packages/jellyfin-tui/) is available as a package in
-the [AUR](https://aur.archlinux.org). You can install it with your
-preferred [AUR helper](https://wiki.archlinux.org/title/AUR_helpers). Example:
+From this repository:
 
 ```bash
-paru -S jellyfin-tui
-```
-
-### Nix
-
-[jellyfin-tui](https://search.nixos.org/packages?channel=unstable&show=jellyfin-tui&from=0&size=50&sort=relevance&type=packages&query=jellyfin-tui)
-is available as a package in [Nixpkgs](https://search.nixos.org/packages).
-
-### Alpine Linux
-
-[jellyfin-tui](https://pkgs.alpinelinux.org/package/edge/community/x86_64/jellyfin-tui) is available as a package in the
-Alpine Linux community repository.
-
-### Other Linux
-
-Jellyfin-tui depends on **libmpv2** (audio playback) and **sqlite3** (offline caching), both of which should be
-available in your distribution's package manager. On Debian/Ubuntu based systems, you may need to install `libmpv-dev`
-and `libssl-dev` as well for building.
-
-```bash
-# If you're new to rust:
-# install rust from https://rustup.rs and make sure ~/.cargo/bin is in your PATH (add this to ~/.bashrc or ~/.zshrc etc.)
-export PATH=$PATH:~/.cargo/bin/
-
-# Arch
-sudo pacman -S mpv sqlite
-# Ubuntu/Debian
-sudo apt install mpv libmpv-dev sqlite3 libssl-dev
-```
-
-```bash
-# clone this repository
-git clone https://github.com/dhonus/jellyfin-tui
-cd jellyfin-tui
-
-# optional: use latest tag
-git fetch --tags
-git checkout $(git tag | sort -V | tail -1)
-
+git clone https://github.com/leandro754/Navidrome-tui.git
+cd Navidrome-tui
 cargo install --path .
 ```
 
-### macOS
+For local development:
 
 ```bash
-brew install mpv
-git clone https://github.com/dhonus/jellyfin-tui
-cd jellyfin-tui
-# add exports to your shell profile (~/.zshrc etc.)
-export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix)/lib"
-export PATH=$PATH:~/.cargo/bin/
-cargo install --path .
+cargo run
 ```
 
----
+Available command-line options:
+
+```text
+navidrome-tui [OPTIONS]
+
+  --version         Print version information
+  --help            Print help
+  --no-splash       Do not show the splash screen
+  --select-server   Force server selection on startup
+  --offline         Start in offline mode
+```
 
 ## Configuration
 
-When you run jellyfin-tui for the first time, it will guide you through creating a configuration file. You can
-authenticate using either username/password, password file, or jellyfin quick connect. Each of these options then uses
-locally stored auth tokens for future logins.
+On first launch, `navidrome-tui` creates the required directories and guides you
+through a basic configuration.
 
-The program **prints the config location** when run. On linux, the configuration file is located at
-`~/.config/jellyfin-tui/config.yaml`. Feel free to edit it manually if needed.
+Default paths:
+
+- Linux: `~/.config/navidrome-tui/config.yaml`
+- macOS: `~/Library/Application Support/navidrome-tui/config.yaml`
+- Windows: `%APPDATA%\navidrome-tui\config.yaml`
+
+Runtime data, logs, cover cache, databases, downloads and mpv scripts are stored
+under the platform data directory in a `navidrome-tui` folder.
+
+Example config:
 
 ```yaml
 servers:
-  - name: Password Server
-    url: 'https://jellyfin.example.com'
-    username: 'username'
-    password: 'imcool123'
-    default: true # Add to skip server picker on startup. Use --select-server to override
-  - name: Quick Connect Server
-    url: 'http://localhost:8096'
-    quick_connect: true # use jellyfin quick connect
-  - name: Password File Server
-    url: 'http:/jellyfin.example2.com'
-    username: 'username'
-    password_file: /home/myusername/.jellyfin-tui-password # use a file containing the password
+  - name: Home
+    url: "https://music.example.com"
+    username: "leandro"
+    password: "change-me"
+    default: true
 
-# All following settings are OPTIONAL. What you see here are the defaults.
+  - name: Local
+    url: "http://localhost:4533"
+    username: "leandro"
+    password_file: "/home/leandro/.config/navidrome-tui/password"
 
-# Show album cover image
+download_path: "/home/leandro/Music/navidrome-tui"
+
+# UI
 art: true
-# Save and restore the state of the player (queue, volume, etc.)
 persist: true
-# Grab the primary color from the cover image (false => uses the current theme's `accent` instead)
 auto_color: true
-# Time in milliseconds to fade between colors when the track changes
 auto_color_fade_ms: 400
-# Always show the lyrics pane, even if no lyrics are available
-lyrics: 'always' # options: 'always', 'never', 'auto'
-# Swap the play and pause icons
+lyrics: "always" # always, auto, never
 swap_play_pause: false
-
 rounded_corners: true
+window_title: true
 
-transcoding:
-  bitrate: 320
-  # container: mp3
-
-# Discord Rich Presence. Shows your listening status on your Discord profile if Discord is running.
-discord: APPLICATION_ID
-# Displays album art on your Discord profile if enabled
-# !!CAUTION!! - Enabling this will expose the URL of your Jellyfin instance to all Discord users!
+# Discord Rich Presence. Use a Discord application id.
+discord: 123456789012345678
 discord_art: false
-# Sets the text shown in your Discord status. (Listening to {})
-# name: jellyfin-tui
-# state: artist
-# details: track title
 discord_status: "state"
 
-# Customize the title of the terminal window
-window_title: true # default -> {title} – {artist} ({year})
-# window_title: false # disable
-# Custom title: choose from current track's {title} {artist} {album} {year}
-# window_title: "\"{title}\" by {artist} ({year}) – jellyfin-tui"
-
-# Options specified here will be passed to mpv - https://mpv.io/manual/master/#options
+# Options passed to mpv.
 mpv:
   replaygain: album
-  af: lavfi=[loudnorm=I=-23:TP=-1]
   no-config: true
-  log-file: /tmp/mpv.log
+  log-file: /tmp/navidrome-tui-mpv.log
 ```
 
-## Theming
+Notes:
 
-<details>
-<summary>Click to reveal theming documentation</summary>
-<br>
+- Server URLs should not end with a trailing slash.
+- Use either `password` or `password_file`, not both.
+- Navidrome authentication is performed with Subsonic token authentication.
+- `--select-server` lets you choose a non-default server at startup.
+- `--offline` disables network use and plays from local downloads/cache.
 
-Jellyfin-tui comes with several **built-in themes** in both light and dark variants. You can switch between themes in
-the **global popup**.
+## mpv Scripts
 
-You can also define your own **custom themes** in the config by selecting a **base theme** and *overriding* any colors
-you want.
-Custom themes are hot-reloaded when you save the config file.
+`navidrome-tui` creates an `mpv-scripts` directory inside its data directory.
+Scripts placed there can be loaded by mpv. You can also list scripts explicitly
+in the `mpv` configuration.
 
-### Color formats
+The `mpv` section accepts mpv property names and values. Invalid mpv properties
+may cause startup failures, so test changes incrementally.
 
-* `"#rrggbb"` (hex)
-* `"red"`,`"white"`,`"gray"` (named)
-* `"auto"` → uses the extracted accent from album art
-* `"none"` → disables optional backgrounds (`background`,`album_header_background` only)
+## Downloads and Offline Mode
 
-### Overridable keys
+Press `d` on a track or album to queue a download. Press `Shift+d` to remove a
+downloaded item. More download actions are available from the popup menus.
 
-<details>
-<summary>Full list of keys</summary>
-<br>
+Downloaded tracks are stored under the configured `download_path` or the default
+music directory. Metadata and download state are tracked in SQLite, which allows
+the app to start in offline mode:
 
-| Key                            | Description                                                                                         |
-|--------------------------------|-----------------------------------------------------------------------------------------------------|
-| `background`                   | Main background color. Optional — `none` uses terminal bg.                                          |
-| `foreground`                   | Primary text color.                                                                                 |
-| `foreground_secondary`         | Secondary text (artists in player, ...).                                                            |
-| `foreground_dim`               | Dimmed text for less important UI elements.                                                         |
-| `foreground_disabled`          | Disabled or unavailable UI elements, disliked tracks.                                               |
-| `section_title`                | Titles of sections like *Albums*, *Artists*, etc.                                                   |
-| `accent`                       | Fallback color for `"auto"`, applied when album art isn't available or if `auto_color` is disabled. |
-| `border`                       | Normal border color.                                                                                |
-| `border_focused`               | Border color when a widget is focused. `"auto"` uses primary (album) color.                         |
-| `selected_active_background`   | Background of the currently selected row the the active section.                                    |
-| `selected_active_foreground`   | Text color of the selected row in the active section.                                               |
-| `selected_inactive_background` | Background of selected rows in inactive sections.                                                   |
-| `selected_inactive_foreground` | Foreground of selected rows in inactive sections.                                                   |
-| `scrollbar_thumb`              | Scrollbar handle color.                                                                             |
-| `scrollbar_track`              | Scrollbar track color.                                                                              |
-| `progress_fill`                | Played/filled portion of progress bars.                                                             |
-| `progress_track`               | Unfilled portion of progress bars.                                                                  |
-| `tab_active_foreground`        | Text color of the active tab.                                                                       |
-| `tab_inactive_foreground`      | Text color of inactive tabs.                                                                        |
-| `album_header_background`      | Background for album/artist header rows (optional).                                                 |
-| `album_header_foreground`      | Foreground for album/artist header rows.                                                            |
-
-</details>
-
-### Example themes
-
-```yaml
-themes:
-  - name: "Transparent Light"
-    base: "Light"
-
-    # remove background
-    background: "none"
-
-    # make active tab text use album accent color
-    tab_active_foreground: "auto"
-
-  - name: "Monochrome Dark (Tweaked)"
-    base: "Monochrome Dark"
-
-    # remove background and album header backgrounds
-    background: "none"
-    album_header_background: "none"
-
-    # make progress bar follow album accent
-    progress_fill: "auto"
-
-    # high contrast row selection
-    selected_active_background: "#eeeeee"
-    selected_active_foreground: "black"
+```bash
+navidrome-tui --offline
 ```
 
-The `"auto"` accent color is derived from album art by default. You can disable this by setting
+Offline mode uses cached metadata and local files only.
 
-```yaml
-auto_color: false
-```
+## Key Bindings
 
-in the config file. This will use the `accent` color defined in the theme instead for all "`"auto"`" usages.
+Press `?` inside the application to open the built-in help page. It is the
+authoritative list of supported actions and current bindings.
 
----
-
-</details>
-
-## Keymap / Custom key bindings
-
-jellyfin-tui supports fully customizable key bindings via the config file.
-
-You can:
-
-- add new bindings
-- override existing bindings
-- or disable defaults entirely
-
-Press **`?`** inside jellyfin-tui to see all the available actions and your current bindings. Use the action names
-exactly as shown there when defining your keymap.
-
-> The **Help page** is the authoritative reference for all actions and bindings.
-
-<details>
-<summary>How to customize</summary>
-
-### Basic example
+Key bindings can be customized in `config.yaml`:
 
 ```yaml
 keymap:
@@ -284,231 +221,128 @@ keymap:
   j: Down
   k: Up
   space: PlayPause
-```
-
-Each entry maps a key combination to an action.
-
-### Adding new bindings
-
-Adding a new key does not remove existing bindings.
-For example, if you want to add `ctrl + s` as an additional key for shuffling the queue, you can do:
-
-```yaml
-keymap:
   ctrl-s: Shuffle
 ```
 
-Both `ctrl + s` and the default `s` will now trigger the Shuffle action.
-
-### Overriding existing bindings
-
-If you bind a key that already exists, it replaces the previous action.
+To disable one binding:
 
 ```yaml
 keymap:
-  ctrl-c: Reset
-```
-
-Now `ctrl + c` will trigger the Reset action instead of quitting.
-
-### Disabling bindings
-
-To unbind a particular keybinding, you can set its value to `null`.
-
-```yaml
-keymap:
-  # the `Reset` action will now show (unbound) in the help page
   ctrl-x: null
 ```
 
-To start with a completely empty keymap:
+To start from an empty keymap:
 
 ```yaml
 keymap_inherit: false
-# only `Quit`, `Down` and `Up` will be bound
 keymap:
   ctrl-q: Quit
   j: Down
   k: Up
 ```
 
-### Actions with parameters
-
-Some actions accept parameters. It is important to use the correct syntax for these, which is
-`!ActionName "parameters"`:
+Some actions accept parameters:
 
 ```yaml
 keymap:
-  # seek 10 seconds forward or backward
   ctrl-h: !Seek -10
   ctrl-l: !Seek 10
-  # run a shell command, in this case detaching from tmux
   q: !Shell "tmux detach"
 ```
 
-Only the bindings you define will exist.
+![Help](.github/help.png)
 
-</details>
+## Popup Menus
 
+Press `p` to open the context popup and `Shift+p` to open the global popup.
+Popups expose actions that do not need permanent key bindings, including
+download repair, queue actions, theme selection, library sync and playback
+preferences.
 
-<details>
-<summary>Key syntax</summary>
-
-The expected syntax format is `modifier-modifier-key: ActionName`. Modifiers can be `ctrl`, `alt`, or `shift` and can be
-combined in any order. For example, `ctrl-shift-a` or `shift-ctrl-a` are both valid.
-
-The key can be any single character, function key (e.g., F1, F2), or special key (e.g., Enter, Space).
-
-### Examples
-
-```yaml
-ctrl-c: Quit
-shift-enter: QueueTempBack
-alt-j: Down
-ctrl-left: ShrinkPane
-ctrl-shift-s: GlobalShuffle
-':': !Shell "notify-send hello"
-```
-
-### Special keys
-
-```yaml
-enter
-esc
-tab
-backtab
-left right up down
-home end
-pageup pagedown
-delete backspace
-space
-```
-
-</details>
-
-![ image ](.github/help.png)
-
-## Popup
-
-There are only so many keys to bind, so some actions are hidden behind a popup. Press `p` to open it and `ESC` to close
-it. To open the Global Popup, press `Shift+p`. The popup is context-sensitive and will show different options depending
-on where you are in the program.
-
-The **Global Popup** includes several toggleable preferences:
-
-| Option                                            | Description                                                                                                                                                                                                   |
-|---------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Synchronize with Jellyfin (runs every 10 minutes) | Manually trigger a library synchronization with the Jellyfin server. This updates the local cache with any changes made on the server, such as new tracks, metadata updates, etc.                             |
-| Run a Jellyfin task                               | Trigger any of the available Jellyfin background tasks, such as `Library: Download missing lyrics` or `Media Analysis`. Very useful for performing maintenance tasks without logging into the web interface.  |
-| Sleep Timer                                       | Fade out and pause after a set amount of time or pause when the current track ends. Great for listening before bed.                                                                                           |
-| Switch to {`large/small`} artwork                 | Toggles the cover art display size                                                                                                                                                                            |
-| Use {`track/album`}                               | Determines whether to use the track's own artwork or the album's artwork when both are available. Also respected when downloading tracks for offline use.                                                     |
-| Theme                                             | Opens the theme picker                                                                                                                                                                                        |
-| Select music libraries                            | If you have multiple music libraries, you can choose which one(s) to include in your library view.                                                                                                            |
-| Repair offline downloads (could take a minute)    | Checks the integrity of downloaded tracks and repairs any issues by re-downloading them from the server. Useful if you encounter problems with offline playback or if your library has changed significantly. |
-| Stop downloading and abort queued                 | Immediately stops all ongoing downloads and clears the download queue. Useful if you need to quickly free up bandwidth or system resources, or if you accidentally initiated a large number of downloads.     |
-| Reset section widths                              | Resets the widths of all sections to their default values.                                                                                                                                                    |
-
-Regular popups include options relevant to the current context. For example, in the discography view, you can choose the
-order in which albums are displayed:
-
-![image](.github/popup.png)
+![Popup](.github/popup.png)
 
 ## Queue
 
-Jellyfin-tui has a double queue similar to Spotify. You can add songs to the queue by pressing `e` or `shift + enter`.
-Learn more about what you can do with the queue by pressing `?` and reading through the key bindings.
-
-![image](.github/queue.png)
+The queue model is similar to Spotify: you can play a list normally and still
+insert temporary next-up items. Use `e` or `Shift+Enter` to add songs to the
+queue, and press `?` in the application for the full queue keymap.
 
 ## Global Shuffle
 
-You can shuffle from your entire library with the Global Shuffle feature. Open it with `Ctrl+S`, select from the options
-it offers, and hit `Play` to start playing.
+Open global shuffle with `Ctrl+S`, choose the filters you want, and start
+playback from a generated selection.
 
-![.github/shuffle.png](.github/shuffle.png)
+![Shuffle](.github/shuffle.png)
 
-## Repeat & Radio
+## Repeat and Radio
 
-Repeat controls what happens when playback reaches the end.
+Press `R` to cycle repeat modes:
 
-* **Off** → stop playback
-* **Repeat One (`R1`)** → loop the current track
-* **Repeat All (`R*`)** → loop the current queue
-* **Radio (`R~`)** → automatically add similar tracks to keep playback going
+- Off: stop when playback reaches the end
+- Repeat One: loop the current track
+- Repeat All: loop the current queue
+- Radio: keep playback going by adding more tracks
 
-Press **`R`** to cycle repeat modes.
-
-### Radio Modes
-
-* **Random (`R~:Rand`)** → use a random track from the queue as the seed
-* **Similar (`R~:Sim`)** → always use the first track as the seed
-* **Continues (`R~:Cont`)** → each new track becomes the next seed
-
-When radio is active, press **`Shift+R`** to cycle radio modes.
-
-## MPRIS
-
-Jellyfin-tui registers itself as an MPRIS client, so you can control it with any MPRIS controller. For example,
-`playerctl`.
+When radio is active, press `Shift+R` to cycle radio modes.
 
 ## Search
 
-In the Artists and Tracks lists you can search by pressing `/` and typing your query. The search is case-insensitive and
-will filter the results as you type. Pressing `ESC` will clear the search and keep the current item selected.
+Use `/` in list views to filter locally. The Search tab performs a broader
+library search across artists, albums and tracks.
 
-You can search globally by switching to the Search tab. The search is case-insensitive and will search for artists,
-albums and tracks. It will pull **everything** without pagination, so it may take a while to load if you have a large
-library. This was done because jellyfin won't allow me to search for tracks without an artist or album assigned, which
-this client doesn't support.
+## Themes
 
-![image](.github/search.png)
+Themes are configured in `config.yaml`. A custom theme can extend a built-in
+theme and override individual colors.
 
-## Downloading media / offline mode
+Color values can be:
 
-Downloading music is very simple, just **press `d` on a track** or album. Use **`shift+d`** do delete the download. More
-download options can be found in popups.
+- `"#rrggbb"`
+- named colors such as `"red"`, `"white"` or `"gray"`
+- `"auto"` to use the album-art accent color
+- `"none"` for optional backgrounds
 
-You can launch jellyfin-tui in offline mode by passing the `--offline` flag. This will disable all network access and
-only play downloaded tracks.
+Example:
 
-A local copy of commonly used data is stored in a local database. This speeds up load times and allows you to use the
-program fully offline. Also, playing a downloaded track will play the local copy instead of streaming it, saving
-bandwidth.
-> Your library is updated **in the background** every 10 minutes. You will be notified if anything changes. Track
-> metadata updates whenever you open a discography/album/playlist view in-place. You can also force an update in the
-> global popup menu. Jellyfin is the parent, if you delete music on the server, jellyfin-tui will also delete it
-> including
-> downloaded files.
+```yaml
+themes:
+  - name: "Transparent Dark"
+    base: "Dark"
+    background: "none"
+    album_header_background: "none"
+    progress_fill: "auto"
+    tab_active_foreground: "auto"
+```
 
---- 
+Set this if you prefer theme colors instead of album-art colors:
 
-### Recommendations
+```yaml
+auto_color: false
+```
 
-Due to the nature of the project and jellyfin itself, there are some limitations and things to keep in mind:
+## Supported Terminals
 
-- jellyfin-tui assumes you correctly tag your music files. Please look at
-  the [jellyfin documentation](https://jellyfin.org/docs/general/server/media/music/) on how to tag your music files.
-  Before assuming the program is broken, verify that they show up correctly in Jellyfin itself.
-- **lyrics**: jellyfin-tui will show lyrics if they are available in jellyfin. To scroll automatically with the song,
-  they need to contain timestamps. I recommend using
-  the [LrcLib Jellyfin plugin](https://github.com/jellyfin/jellyfin-plugin-lrclib) and running `Download missing lyrics`
-  directly **within jellyfin-tui** (Global Popup > Run Jellyfin task > Library: Download missing lyrics), or
-  alternatively the desktop application [LRCGET](https://github.com/tranxuanthang/lrcget), both by by tranxuanthang. If
-  you value their work, consider donating to keep this amazing free service running.
+Terminals with image support provide the best experience:
 
-### Supported terminals
-
-Not all terminals have the features needed to cover every aspect of jellyfin-tui. While rare, some terminals lack
-sixel (or equivalent) support or have certain key event limitations. The following are tested and work well:
-
-- kitty (recommended)
-- iTerm2 (recommended)
+- kitty
+- iTerm2
 - ghostty
 - contour
 - wezterm
 - foot
 
-The following have issues
+Terminals without sixel or comparable image support can still run the TUI, but
+cover art may be missing or degraded.
 
-- konsole, alacritty, gnome console, terminator (no sixel support and occasional strange behavior)
+## Fork Notes
+
+This repository is maintained as a Navidrome/Subsonic TUI. User-facing
+documentation, packaging and runtime messages should refer to Navidrome or the
+Subsonic API.
+
+Large binary runtime files such as `*.dll`, `*.exe`, `*.so`, `*.dylib`, `*.lib`
+and `*.pdb` are ignored and should not be committed.
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE).
