@@ -154,6 +154,12 @@ servers:
 
 download_path: "/home/leandro/Music/navidrome-tui"
 
+# Environment variables are supported in server credentials and download_path.
+# Both Unix-style and Windows-style forms work.
+# url: "${NAVIDROME_URL}"
+# username: "$NAVIDROME_USER"
+# password_file: "%NAVIDROME_PASSWORD_FILE%"
+
 # UI
 art: true
 persist: true
@@ -180,6 +186,8 @@ Notes:
 
 - Server URLs should not end with a trailing slash.
 - Use either `password` or `password_file`, not both.
+- `url`, `username`, `password`, `password_file` and `download_path` can use
+  environment variables like `${VAR}`, `$VAR` or `%VAR%`.
 - Navidrome authentication is performed with Subsonic token authentication.
 - `--select-server` lets you choose a non-default server at startup.
 - `--offline` disables network use and plays from local downloads/cache.

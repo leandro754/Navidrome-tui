@@ -378,6 +378,12 @@ impl App {
         let download_dir = config
             .get("download_path")
             .and_then(|v| v.as_str())
+            .map(|path| {
+                crate::config::expand_env_vars(path).unwrap_or_else(|e| {
+                    println!(" ! {}", e);
+                    std::process::exit(1);
+                })
+            })
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
                 dirs::audio_dir()

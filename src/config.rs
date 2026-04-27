@@ -3,6 +3,7 @@ use crate::themes::dialoguer::DialogTheme;
 use dialoguer::{Confirm, Input, Password};
 use dirs::{config_dir, data_dir};
 use std::collections::HashMap;
+use std::env;
 use std::fs::OpenOptions;
 use std::io::Write;
 #[cfg(unix)]
@@ -83,6 +84,73 @@ pub fn get_config() -> Result<(PathBuf, serde_yaml::Value), Box<dyn std::error::
     Ok((config_file, d))
 }
 
+pub fn expand_env_vars(value: &str) -> Result<String, String> {
+    let chars: Vec<char> = value.chars().collect();
+    let mut output = String::with_capacity(value.len());
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            '$' if chars.get(i + 1) == Some(&'{') => {
+                let start = i + 2;
+                let Some(end) = chars[start..].iter().position(|c| *c == '}') else {
+                    return Err(format!("Unclosed environment variable in '{}'", value));
+                };
+                let end = start + end;
+                let name: String = chars[start..end].iter().collect();
+                output.push_str(&read_env_var(&name)?);
+                i = end + 1;
+            }
+            '$' => {
+                let start = i + 1;
+                let mut end = start;
+                while end < chars.len() && is_env_var_char(chars[end]) {
+                    end += 1;
+                }
+                if end == start {
+                    output.push('$');
+                    i += 1;
+                } else {
+                    let name: String = chars[start..end].iter().collect();
+                    output.push_str(&read_env_var(&name)?);
+                    i = end;
+                }
+            }
+            '%' => {
+                let start = i + 1;
+                if let Some(end_offset) = chars[start..].iter().position(|c| *c == '%') {
+                    let end = start + end_offset;
+                    let name: String = chars[start..end].iter().collect();
+                    if name.is_empty() || !name.chars().all(is_env_var_char) {
+                        output.push('%');
+                        i += 1;
+                    } else {
+                        output.push_str(&read_env_var(&name)?);
+                        i = end + 1;
+                    }
+                } else {
+                    output.push('%');
+                    i += 1;
+                }
+            }
+            c => {
+                output.push(c);
+                i += 1;
+            }
+        }
+    }
+
+    Ok(output)
+}
+
+fn is_env_var_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+fn read_env_var(name: &str) -> Result<String, String> {
+    env::var(name).map_err(|_| format!("Environment variable '{}' is not set", name))
+}
+
 pub fn select_server(
     config: &serde_yaml::Value,
     force_server_select: bool,
@@ -145,12 +213,10 @@ fn select_server_interactively(servers: &[serde_yaml::Value]) -> Option<&serde_y
 }
 
 fn parse_server(server: &serde_yaml::Value) -> SelectedServer {
-    let url = match server["url"].as_str() {
-        Some(url) if !url.ends_with('/') => url.to_string(),
-        Some(_) => {
-            println!(" ! Server URL must not end with a trailing slash");
-            std::process::exit(1);
-        }
+    let url = match server["url"].as_str().map(expand_env_vars) {
+        Some(Ok(url)) if !url.ends_with('/') => url,
+        Some(Ok(_)) => exit_config_error("Server URL must not end with a trailing slash"),
+        Some(Err(e)) => exit_config_error(&e),
         None => {
             println!(" ! Selected server does not have a URL configured");
             std::process::exit(1);
@@ -164,15 +230,20 @@ fn parse_server(server: &serde_yaml::Value) -> SelectedServer {
 
     let auth = match server["username"].as_str() {
         Some(username) => {
+            let username = expand_env_vars(username).unwrap_or_else(|e| exit_config_error(&e));
             let password = match (server["password"].as_str(), server["password_file"].as_str()) {
-                (None, Some(password_file)) => std::fs::read_to_string(password_file)
-                    .unwrap_or_else(|e| {
-                        println!(" ! Error reading password file '{}': {}", password_file, e);
-                        std::process::exit(1);
-                    })
-                    .trim_matches(&['\n', '\r'])
-                    .to_string(),
-                (Some(p), None) => p.to_string(),
+                (None, Some(password_file)) => {
+                    let password_file =
+                        expand_env_vars(password_file).unwrap_or_else(|e| exit_config_error(&e));
+                    std::fs::read_to_string(&password_file)
+                        .unwrap_or_else(|e| {
+                            println!(" ! Error reading password file '{}': {}", password_file, e);
+                            std::process::exit(1);
+                        })
+                        .trim_matches(&['\n', '\r'])
+                        .to_string()
+                }
+                (Some(p), None) => expand_env_vars(p).unwrap_or_else(|e| exit_config_error(&e)),
                 (Some(_), Some(_)) => {
                     println!(
                         " ! Selected server has password and password_file configured, only choose one"
@@ -185,7 +256,7 @@ fn parse_server(server: &serde_yaml::Value) -> SelectedServer {
                 }
             };
 
-            AuthMethod::UserPass { username: username.to_string(), password }
+            AuthMethod::UserPass { username, password }
         }
         None => {
             println!(" ! Selected server does not have a username configured");
@@ -194,6 +265,11 @@ fn parse_server(server: &serde_yaml::Value) -> SelectedServer {
     };
 
     SelectedServer { url, auth }
+}
+
+fn exit_config_error(message: &str) -> ! {
+    println!(" ! {}", message);
+    std::process::exit(1);
 }
 
 pub fn initialize_config() {
