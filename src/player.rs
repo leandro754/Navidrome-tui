@@ -1,4 +1,4 @@
-use crate::database::database::{Command, JellyfinCommand};
+use crate::database::database::{Command, NavidromeCommand};
 use crate::keyboard::ActiveSection;
 use crate::popup::PopupMenu;
 use crate::tui::{App, RadioMode, Repeat, SleepTimer};
@@ -45,7 +45,7 @@ impl App {
             let _ = self
                 .db
                 .cmd_tx
-                .send(Command::Jellyfin(JellyfinCommand::Stopped {
+                .send(Command::Navidrome(NavidromeCommand::Stopped {
                     id: Some(self.active_song_id.clone()),
                     position_ticks: Some(
                         self.state.current_playback_state.position as u64 * 10_000_000,
@@ -98,7 +98,7 @@ impl App {
             let _ = self
                 .db
                 .cmd_tx
-                .send(Command::Jellyfin(JellyfinCommand::Stopped {
+                .send(Command::Navidrome(NavidromeCommand::Stopped {
                     id: Some(self.active_song_id.clone()),
                     position_ticks: Some(
                         self.state.current_playback_state.position as u64 * 10_000_000,

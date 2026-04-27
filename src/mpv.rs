@@ -280,7 +280,7 @@ impl MpvHandle {
             .map(|seq| seq.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
 
-        let data_dir = dirs::data_dir().unwrap().join("jellyfin-tui").join("mpv-scripts");
+        let data_dir = dirs::data_dir().unwrap().join("navidrome-tui").join("mpv-scripts");
 
         let mpv = Mpv::with_initializer(|init| {
             init.set_option("msg-level", "ffmpeg/demuxer=no").unwrap();

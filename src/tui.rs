@@ -34,7 +34,7 @@ use tokio::sync::mpsc;
 use std::collections::HashMap;
 use std::io::{Stdout, Write};
 
-use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPosition};
+use souvlaki::{MediaControlEvent, MediaMetadata, MediaPosition};
 
 use dirs::data_dir;
 use std::path::PathBuf;
@@ -53,7 +53,7 @@ use std::sync::Arc;
 use crokey::{Combiner, KeyCombination};
 
 use crate::database::database::{
-    Command, DownloadCommand, DownloadItem, JellyfinCommand, UpdateCommand,
+    Command, DownloadCommand, DownloadItem, NavidromeCommand, UpdateCommand,
 };
 use crate::help::render_help_modal;
 use crate::mpv::MpvHandle;
@@ -113,7 +113,7 @@ pub struct Song {
     pub url: String,
     pub name: String,
     pub artist: String,
-    pub artists: Vec<String>, // vec of artist names from jellyfin
+    pub artists: Vec<String>, // vec of artist names from navidrome
     pub album_artists: Vec<Artist>,
     pub album: String,
     #[serde(default)]
@@ -208,6 +208,7 @@ pub struct App {
     pub config: serde_yaml::Value, // config
     pub keymap: IndexMap<KeyCombination, crate::keyboard::Action>,
     pub keymap_error: Option<String>,
+    #[allow(dead_code)]
     pub combiner: Combiner,
     config_watcher: crate::themes::theme::ConfigWatcher,
     pub auto_color: bool, // grab color from cover art (coolest feature ever omg)
@@ -272,7 +273,7 @@ pub struct App {
     pub popup: PopupState,
     pub popup_search_term: String, // this is here because popup isn't persisted
 
-    pub client: Option<Arc<Client>>, // jellyfin http client
+    pub client: Option<Arc<Client>>, // navidrome http client
     pub network_quality: NetworkQuality,
     pub discord:
         Option<(mpsc::Sender<crate::discord::DiscordCommand>, Instant, bool, StatusDisplayType)>, // discord presence tx
@@ -297,9 +298,9 @@ pub struct App {
     pub recent_input_activity: Instant,
     last_state_saved: Instant,
     last_position_secs: f64,
-    scrobble_this: (String, u64), // an id of the previous song we want to scrobble when it ends, and the position in jellyfin ticks
+    scrobble_this: (String, u64), // an id of the previous song we want to scrobble when it ends, and the position in navidrome ticks
     should_scrobble: bool,        // flag to track if we should scrobble the current song
-    pub controls: Option<MediaControls>,
+    pub controls: Option<crate::mpris::MprisControls>,
     pub db: DatabaseWrapper,
 
     pub last_term_size: (u16, u16), // Last known terminal size used to trigger full redraw
@@ -373,6 +374,18 @@ impl App {
             original_playlists,
         ) = Self::init_library(&db.pool, successfully_online).await;
 
+        // Determine the download directory: from config or fallback to ~/Music/navidrome-tui
+        let download_dir = config
+            .get("download_path")
+            .and_then(|v| v.as_str())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                dirs::audio_dir()
+                    .or_else(dirs::home_dir)
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("navidrome-tui")
+            });
+
         // this is the main background thread
         tokio::spawn(database::database::t_database(
             Arc::clone(&db.pool),
@@ -382,6 +395,7 @@ impl App {
             client.clone(),
             server_id.clone(),
             network_quality,
+            download_dir.clone(),
         ));
 
         // connect to mpv, set options and default properties
@@ -514,7 +528,7 @@ impl App {
             cover_art_path: String::from(""),
             cover_art_dir: data_dir()
                 .unwrap_or_else(|| PathBuf::from("./"))
-                .join("jellyfin-tui")
+                .join("navidrome-tui")
                 .join("covers")
                 .to_str()
                 .unwrap_or("")
@@ -560,7 +574,7 @@ impl App {
             client,
             network_quality,
             discord,
-            downloads_dir: data_dir().unwrap().join("jellyfin-tui").join("downloads"),
+            downloads_dir: download_dir,
 
             mpris_paused: true,
             mpris_active_song_id: String::from(""),
@@ -616,9 +630,9 @@ impl App {
             AuthMethod::UserPass { username, password } => {
                 Client::new(&base_url, username, password).await?
             }
-            AuthMethod::QuickConnect => Client::quick_connect(&base_url).await,
+            AuthMethod::QuickConnect => Client::quick_connect(&base_url).await?,
         };
-        if client.access_token.is_empty() {
+        if client.token.is_empty() {
             println!(" ! Failed to authenticate. Please check your credentials and try again.");
             return None;
         }
@@ -641,7 +655,7 @@ impl App {
         config: &serde_yaml::Value,
         client: &Option<Arc<Client>>,
     ) -> (String, String) {
-        let data_dir = data_dir().unwrap().join("jellyfin-tui");
+        let data_dir = data_dir().unwrap().join("navidrome-tui");
         let db_directory = data_dir.join("databases");
 
         if let Some(client) = client {
@@ -1257,10 +1271,11 @@ impl App {
         let song_changed =
             self.active_song_id != self.mpris_active_song_id && playback.duration > 0.0;
 
-        let controls = match self.controls.as_mut() {
+        let mpris_controls = match self.controls.as_mut() {
             Some(c) => c,
             None => return,
         };
+        let controls = &mut mpris_controls.controls;
 
         if song_changed {
             self.mpris_active_song_id = self.active_song_id.clone();
@@ -1339,7 +1354,7 @@ impl App {
         if (self.last_position_secs + 10.0) < playback.position || force {
             self.last_position_secs = playback.position;
 
-            // every 5 seconds report progress to jellyfin
+            // every 5 seconds report progress to navidrome
             self.scrobble_this =
                 (current_song.id.clone(), (playback.position * 10_000_000.0) as u64);
 
@@ -1347,7 +1362,7 @@ impl App {
                 let _ = self
                     .db
                     .cmd_tx
-                    .send(Command::Jellyfin(JellyfinCommand::ReportProgress {
+                    .send(Command::Navidrome(NavidromeCommand::ReportProgress {
                         progress_report: ProgressReport {
                             volume_level: playback.volume as u64,
                             is_paused: self.paused,
@@ -1409,13 +1424,13 @@ impl App {
         if should_scrobble && self.client.is_some() {
             self.should_scrobble = false;
 
-            // Scrobble. The way to do scrobbling in jellyfin is using the last.fm jellyfin plugin.
+            // Scrobble. The way to do scrobbling in navidrome is using the last.fm navidrome plugin.
             // Essentially, this event should be sent either way, the scrobbling is purely server side and not something we need to worry about.
             if !self.scrobble_this.0.is_empty() {
                 let _ = self
                     .db
                     .cmd_tx
-                    .send(Command::Jellyfin(JellyfinCommand::Stopped {
+                    .send(Command::Navidrome(NavidromeCommand::Stopped {
                         id: Some(self.scrobble_this.0.clone()),
                         position_ticks: Some(self.scrobble_this.1),
                     }))
@@ -1425,7 +1440,7 @@ impl App {
             let _ = self
                 .db
                 .cmd_tx
-                .send(Command::Jellyfin(JellyfinCommand::Playing { id: song.id.clone() }))
+                .send(Command::Navidrome(NavidromeCommand::Playing { id: song.id.clone() }))
                 .await;
         }
 
@@ -1696,7 +1711,7 @@ impl App {
                 };
 
                 if t.is_empty() && a.is_empty() && al.is_empty() && y.is_empty() {
-                    "jellyfin-tui".to_string()
+                    "navidrome-tui".to_string()
                 } else {
                     let mut out = self
                         .window_title_format
@@ -1711,13 +1726,13 @@ impl App {
                     out = out.trim().trim_matches(|c: char| " -–—".contains(c)).to_string();
 
                     if out.is_empty() {
-                        "jellyfin-tui".to_string()
+                        "navidrome-tui".to_string()
                     } else {
                         out
                     }
                 }
             }
-            None => "jellyfin-tui".to_string(),
+            None => "navidrome-tui".to_string(),
         };
 
         let safe = title.replace(['\x1b', '\x07'], " ");
@@ -2132,7 +2147,7 @@ impl App {
             )));
         }
         let data_dir = data_dir().unwrap();
-        let cover_dir = data_dir.join("jellyfin-tui").join("covers");
+        let cover_dir = data_dir.join("navidrome-tui").join("covers");
 
         // When track_based_art is on, prefer the song's own image; fall back to the album image.
         // When track_based_art is off, only look for the album image (no fallback needed).

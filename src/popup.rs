@@ -257,7 +257,7 @@ impl PopupMenu {
             PopupMenu::GenericMessage { title, .. } => title.to_string(),
             // ---------- Global commands ---------- //
             PopupMenu::GlobalRoot { .. } => "Global Commands".to_string(),
-            PopupMenu::GlobalRunScheduledTask { .. } => "Run a Jellyfin task".to_string(),
+            PopupMenu::GlobalRunScheduledTask { .. } => "Run a navidrome task".to_string(),
             PopupMenu::GlobalSleepTimer { .. } => "Sleep Timer".to_string(),
             PopupMenu::GlobalShuffle { .. } => "Global Shuffle".to_string(),
             PopupMenu::GlobalSetThemes { .. } => "Set Theme".to_string(),
@@ -305,13 +305,13 @@ impl PopupMenu {
             // ---------- Global commands ---------- //
             PopupMenu::GlobalRoot { large_art, track_based_art, downloading, .. } => vec![
                 PopupAction::new(
-                    "Synchronize with Jellyfin (runs every 10 minutes)".to_string(),
+                    "Synchronize with navidrome (runs every 10 minutes)".to_string(),
                     PopupCommand::Refresh,
                     Style::default(),
                     true,
                 ),
                 PopupAction::new(
-                    "Run a Jellyfin task".to_string(),
+                    "Run a navidrome task".to_string(),
                     PopupCommand::RunScheduledTasks,
                     Style::default(),
                     true,
@@ -2758,7 +2758,7 @@ impl crate::tui::App {
                         if self.artists.iter().any(|a| a.id == artist.id) {
                             self.reposition_cursor(&artist.id, Selectable::Artist);
                         } else {
-                            // try by name... jellyfin can be such a pain (the IDs are not always the same lol)
+                            // try by name... navidrome can be such a pain (the IDs are not always the same lol)
                             if let Some(artist) =
                                 self.artists.iter().find(|a| a.name == artist.name).cloned()
                             {

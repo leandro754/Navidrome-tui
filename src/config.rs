@@ -5,6 +5,7 @@ use dirs::{config_dir, data_dir};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
@@ -12,9 +13,10 @@ use std::path::PathBuf;
 pub struct AuthEntry {
     pub known_urls: Vec<String>,
     pub device_id: String,
-    pub access_token: String,
     pub user_id: String,
     pub username: String,
+    pub token: String,
+    pub salt: String,
 }
 // ServerId -> AuthEntry
 pub type AuthCache = HashMap<String, AuthEntry>;
@@ -42,8 +44,8 @@ pub fn prepare_directories() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = data_dir().expect(" ! Failed getting data directory");
     let config_dir = config_dir().expect(" ! Failed getting config directory");
 
-    let j_data_dir = data_dir.join("jellyfin-tui");
-    let j_config_dir = config_dir.join("jellyfin-tui");
+    let j_data_dir = data_dir.join("navidrome-tui");
+    let j_config_dir = config_dir.join("navidrome-tui");
 
     std::fs::create_dir_all(&j_data_dir)?;
     std::fs::create_dir_all(&j_config_dir)?;
@@ -73,7 +75,7 @@ pub fn get_config() -> Result<(PathBuf, serde_yaml::Value), Box<dyn std::error::
         }
     };
 
-    let config_file: PathBuf = config_dir.join("jellyfin-tui").join("config.yaml").into();
+    let config_file: PathBuf = config_dir.join("navidrome-tui").join("config.yaml").into();
 
     let f = std::fs::File::open(&config_file)?;
     let d = serde_yaml::from_reader(f)?;
@@ -186,12 +188,8 @@ fn parse_server(server: &serde_yaml::Value) -> SelectedServer {
             AuthMethod::UserPass { username: username.to_string(), password }
         }
         None => {
-            if server["quick_connect"].as_bool().unwrap_or(false) {
-                AuthMethod::QuickConnect
-            } else {
-                println!(" ! Selected server does not have a username configured");
-                std::process::exit(1);
-            }
+            println!(" ! Selected server does not have a username configured");
+            std::process::exit(1);
         }
     };
 
@@ -211,7 +209,7 @@ pub fn initialize_config() {
         }
     };
 
-    let config_file = config_dir.join("jellyfin-tui").join("config.yaml");
+    let config_file = config_dir.join("navidrome-tui").join("config.yaml");
 
     let mut updating = false;
     if config_file.exists() {
@@ -237,15 +235,16 @@ pub fn initialize_config() {
         }
     }
 
+    #[allow(unused_assignments)]
     let mut auth_method = OnboardingAuth::UserPass;
     let mut server_name = String::new();
     let mut server_url = String::new();
     let mut username = String::new();
     let mut password = String::new();
 
-    println!(" - Thank you for trying jellyfin-tui! <3\n");
+    println!(" - Thank you for trying navidrome-tui! <3\n");
     println!(" - If you encounter issues or missing features, please report them here:");
-    println!(" - https://github.com/dhonus/jellyfin-tui/issues\n");
+    println!(" - https://github.com/dhonus/navidrome-tui/issues\n");
     println!(" ! Configuration file not found. Please enter the following details:\n");
 
     let http_client = reqwest::blocking::Client::new();
@@ -255,7 +254,7 @@ pub fn initialize_config() {
     while !ok {
         server_url = Input::with_theme(&DialogTheme::default())
             .with_prompt("Server URL")
-            .with_initial_text("https://")
+            .with_initial_text("http://")
             .validate_with({
                 move |input: &String| -> Result<(), &str> {
                     if input.starts_with("http://")
@@ -308,15 +307,13 @@ pub fn initialize_config() {
                     .unwrap();
 
                 {
-                    let url: String = String::new() + &server_url + "/Users/authenticatebyname";
+                    // Generate salt and token for Navidrome
+                    let salt = crate::client::random_string();
+                    let token = format!("{:x}", md5::compute(format!("{}{}", password, salt)));
+                    
+                    let url: String = format!("{}/rest/ping.view?u={}&t={}&s={}&v=1.16.1&c=navidrome-tui&f=json", server_url, username, token, salt);
                     match http_client
-                        .post(url)
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", format!("MediaBrowser Client=\"jellyfin-tui\", Device=\"jellyfin-tui\", DeviceId=\"jellyfin-tui\", Version=\"{}\"", env!("CARGO_PKG_VERSION")))
-                        .json(&serde_json::json!({
-                            "Username": &username,
-                            "Pw": &password,
-                        }))
+                        .get(&url)
                         .send() {
                         Ok(response) => {
                             if !response.status().is_success() {
@@ -326,16 +323,13 @@ pub fn initialize_config() {
                             let value = match response.json::<serde_json::Value>() {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    println!(" ! Error authenticating: {}", e);
+                                    println!(" ! Error parsing response: {}", e);
                                     continue;
                                 }
                             };
-                            if value["AccessToken"].is_null() {
-                                println!(" ! Error authenticating: No access token received");
-                                continue;
-                            }
-                            if value["ServerId"].is_null() {
-                                println!(" ! Error authenticating: No server ID received");
+                            let resp = &value["subsonic-response"];
+                            if resp.is_null() || resp["status"].as_str() != Some("ok") {
+                                println!(" ! Error authenticating: {:?}", resp["error"]);
                                 continue;
                             }
                         }
@@ -346,27 +340,15 @@ pub fn initialize_config() {
                     }
                 }
             }
-            OnboardingAuth::QuickConnect => {
-                username.clear();
-                password.clear();
-                println!(" - Quick Connect selected.");
-                println!(" - You will authorize this device later from another Jellyfin client.");
-            }
+            OnboardingAuth::QuickConnect => {}
         }
 
-        let confirm_prompt = match auth_method {
-            OnboardingAuth::UserPass => format!(
-                "Success! Use server '{}' ({}) as user '{}'?",
-                server_name.trim(),
-                server_url.trim(),
-                username.trim(),
-            ),
-            OnboardingAuth::QuickConnect => format!(
-                "Use server '{}' ({}) with Quick Connect?",
-                server_name.trim(),
-                server_url.trim(),
-            ),
-        };
+                let confirm_prompt = format!(
+            "Success! Use server '{}' ({}) as user '{}'?",
+            server_name.trim(),
+            server_url.trim(),
+            username.trim(),
+        );
 
         match Confirm::with_theme(&DialogTheme::default())
             .with_prompt(&confirm_prompt)
@@ -375,13 +357,11 @@ pub fn initialize_config() {
             .interact_opt()
             .unwrap()
         {
-            Some(true) => {
-                ok = true;
-            }
+            Some(true) => { ok = true; }
             _ => {
                 counter += 1;
                 if counter >= 3 {
-                    println!(" 𝄆 I believe in you! You can do it! 𝄆");
+                    println!(" I believe in you! You can do it!");
                 } else {
                     println!(" ! Let's try again.\n");
                 }
@@ -389,31 +369,37 @@ pub fn initialize_config() {
         }
     }
 
-    let server_entry = match auth_method {
-        OnboardingAuth::UserPass => serde_json::json!({
-            "name": server_name.trim(),
-            "url": server_url.trim(),
-            "username": username.trim(),
-            "password": password.trim(),
-        }),
-        OnboardingAuth::QuickConnect => serde_json::json!({
-            "name": server_name.trim(),
-            "url": server_url.trim(),
-            "quick_connect": true,
-        }),
-    };
+    let default_download = dirs::audio_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navidrome-tui")
+        .to_string_lossy()
+        .into_owned();
+
+    let download_path: String = Input::with_theme(&DialogTheme::default())
+        .with_prompt("Download folder (songs saved as Artist/Album/Artist - Title.ext)")
+        .with_initial_text(&default_download)
+        .interact_text()
+        .unwrap();
+
+    let server_entry = serde_json::json!({
+        "name": server_name.trim(),
+        "url": server_url.trim(),
+        "username": username.trim(),
+        "password": password.trim(),
+    });
 
     let default_config = serde_yaml::to_string(&serde_json::json!({
-        "servers": [ server_entry ]
+        "servers": [ server_entry ],
+        "download_path": download_path.trim(),
     }))
     .expect(" ! Could not serialize default configuration");
 
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&config_file)
-        .expect(" ! Could not create config file");
+    let mut opts = OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    opts.mode(0o600);
+    let mut file = opts.open(&config_file).expect(" ! Could not create config file");
     file.write_all(default_config.as_bytes()).expect(" ! Could not write default config");
 
     println!(
@@ -423,7 +409,7 @@ pub fn initialize_config() {
 }
 
 pub fn load_auth_cache() -> Result<AuthCache, Box<dyn std::error::Error>> {
-    let path = dirs::data_dir().unwrap().join("jellyfin-tui").join("auth_cache.json");
+    let path = dirs::data_dir().unwrap().join("navidrome-tui").join("auth_cache.json");
     if !path.exists() {
         return Ok(HashMap::new());
     }
@@ -433,16 +419,15 @@ pub fn load_auth_cache() -> Result<AuthCache, Box<dyn std::error::Error>> {
 }
 
 pub fn save_auth_cache(cache: &AuthCache) -> Result<(), Box<dyn std::error::Error>> {
-    let path = dirs::data_dir().unwrap().join("jellyfin-tui").join("auth_cache.json");
+    let path = dirs::data_dir().unwrap().join("navidrome-tui").join("auth_cache.json");
     let json = serde_json::to_string_pretty(cache)?;
-
     let mut file = {
         let mut opts = OpenOptions::new();
         opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
         opts.mode(0o600);
         opts.open(&path)?
     };
-
     file.write_all(json.as_bytes())?;
     Ok(())
 }
@@ -460,7 +445,7 @@ pub fn find_cached_auth_by_url<'a>(
 }
 
 /// This is called after a successful connection.
-/// Writes a mapping of (Server from config.yaml) -> (ServerId from Jellyfin), among other things, to a file.
+/// Writes a mapping of (Server from config.yaml) -> (ServerId from navidrome), among other things, to a file.
 /// This is later used to show the server name when choosing an offline database.
 pub fn update_cache_with_new_auth(
     mut cache: AuthCache,
@@ -472,18 +457,20 @@ pub fn update_cache_with_new_auth(
     let entry = cache.entry(server_id.clone()).or_insert(AuthEntry {
         known_urls: vec![],
         device_id: client.device_id.clone(),
-        access_token: client.access_token.clone(),
         user_id: client.user_id.clone(),
         username: client.user_name.clone(),
+        token: client.token.clone(),
+        salt: client.salt.clone(),
     });
 
     if !entry.known_urls.contains(&selected_server.url) {
         entry.known_urls.push(selected_server.url.clone());
     }
 
-    entry.access_token = client.access_token.clone();
     entry.user_id = client.user_id.clone();
     entry.username = client.user_name.clone();
+    entry.token = client.token.clone();
+    entry.salt = client.salt.clone();
 
     cache
 }

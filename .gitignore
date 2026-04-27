@@ -1,7 +1,18 @@
-/target
+# Rust
+/target/
+
+# Binarios y librerías (Esto evita el error de los 100MB)
+*.dll
+*.exe
+*.so
+*.dylib
+*.lib
+*.pdb
+
+# Tu configuración actual
 config.yaml
 covers/
 
-# ignore nix builds
+# Nix
 /result
 /result-*

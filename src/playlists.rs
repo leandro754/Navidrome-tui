@@ -452,7 +452,7 @@ impl App {
 
         if self.playlist_tracks.is_empty() {
             let message_paragraph = Paragraph::new(if self.state.current_playlist.id.is_empty() {
-                "jellyfin-tui".to_string()
+                "navidrome-tui".to_string()
             } else {
                 "No tracks in the current playlist".to_string()
             })

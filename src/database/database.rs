@@ -31,9 +31,9 @@ pub enum Command {
     Update(UpdateCommand),
     Remove(RemoveCommand), // remove local files
     Rename(RenameCommand),
-    Delete(DeleteCommand), // delete on the jellyfin server
+    Delete(DeleteCommand), // delete on the navidrome server
     CancelDownloads,
-    Jellyfin(JellyfinCommand),
+    Navidrome(NavidromeCommand),
     DislikeTrack { track_id: String, disliked: bool },
 }
 
@@ -102,7 +102,7 @@ pub enum RenameCommand {
 }
 
 #[derive(Debug)]
-pub enum JellyfinCommand {
+pub enum NavidromeCommand {
     Stopped { id: Option<String>, position_ticks: Option<u64> },
     Playing { id: String },
     ReportProgress { progress_report: ProgressReport },
@@ -118,8 +118,9 @@ pub async fn t_database<'a>(
     client: Option<Arc<Client>>,
     server_id: String,
     network_quality: NetworkQuality,
+    download_dir: std::path::PathBuf,
 ) {
-    let data_dir = dirs::data_dir().unwrap().join("jellyfin-tui").join("downloads");
+    let data_dir = download_dir;
 
     let mut db_interval = tokio::time::interval(Duration::from_secs(1));
     let mut large_update_interval = tokio::time::interval_at(
@@ -357,21 +358,21 @@ pub async fn t_database<'a>(
                             }
                         }
                     }
-                    Command::Jellyfin(jellyfin_cmd) => {
-                        match jellyfin_cmd {
-                            JellyfinCommand::Stopped { id, position_ticks } => {
+                    Command::Navidrome(navidrome_cmd) => {
+                        match navidrome_cmd {
+                            NavidromeCommand::Stopped { id, position_ticks } => {
                                 if let Err(e) = client.stopped(id, position_ticks).await {
-                                    log::error!("Failed to send stopped report to jellyfin: {}", e);
+                                    log::error!("Failed to send stopped report to navidrome: {}", e);
                                 }
                             }
-                            JellyfinCommand::Playing { id } => {
+                            NavidromeCommand::Playing { id } => {
                                 if let Err(e) = client.playing(&id).await {
-                                    log::error!("Failed to send playing report to jellyfin: {}", e);
+                                    log::error!("Failed to send playing report to navidrome: {}", e);
                                 }
                             }
-                            JellyfinCommand::ReportProgress { progress_report } => {
+                            NavidromeCommand::ReportProgress { progress_report } => {
                                 if let Err(e) = client.report_progress(&progress_report).await {
-                                    log::error!("Failed to report progress to jellyfin: {}", e);
+                                    log::error!("Failed to report progress to navidrome: {}", e);
                                 }
                             }
                         }
@@ -486,7 +487,7 @@ async fn handle_update(
         })),
         UpdateCommand::OfflineRepair => {
             let data_dir = match dirs::data_dir() {
-                Some(dir) => dir.join("jellyfin-tui").join("downloads"),
+                Some(dir) => dir.join("navidrome-tui").join("downloads"),
                 None => {
                     log::error!("Could not find data directory for offline repair");
                     return None;
@@ -644,7 +645,7 @@ pub async fn data_updater(
         };
 
         if albums.is_empty() {
-            log::warn!("Library '{}' (id={}) returned ZERO albums from Jellyfin", lib.name, lib.id);
+            log::warn!("Library '{}' (id={}) returned ZERO albums from navidrome", lib.name, lib.id);
         }
 
         for (i, album) in albums.iter().enumerate() {
@@ -811,7 +812,7 @@ pub async fn t_discography_updater(
     client: Arc<Client>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let data_dir = match dirs::data_dir() {
-        Some(dir) => dir.join("jellyfin-tui").join("downloads").join(&client.server_id),
+        Some(dir) => dir.join("navidrome-tui").join("downloads").join(&client.server_id),
         None => return Ok(()),
     };
 
@@ -979,7 +980,7 @@ pub async fn t_playlist_updater(
     }
 
     let data_dir = match dirs::data_dir() {
-        Some(dir) => dir.join("jellyfin-tui").join("downloads").join(&client.server_id),
+        Some(dir) => dir.join("navidrome-tui").join("downloads").join(&client.server_id),
         None => return Ok(()),
     };
 
@@ -1213,7 +1214,7 @@ async fn track_process_queued_download(
         // downloads using transcoded files not implemented yet. Future me problem?
         let transcoding = None;
 
-        if let Some((id, album_id, track_str)) = record {
+        if let Some((id, _album_id, track_str)) = record {
             let track: DiscographySong = match serde_json::from_str(&track_str) {
                 Ok(track) => track,
                 Err(_) => {
@@ -1225,7 +1226,11 @@ async fn track_process_queued_download(
             let pool = pool.clone();
             let tx = tx.clone();
             let url = client.song_url_sync(&track.id, transcoding);
-            let file_dir = data_dir.join(&track.server_id).join(album_id);
+            // Organize by Artist / Album subfolder with readable names
+            let artist = track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
+            let safe_artist = sanitize_filename(&artist);
+            let safe_album = sanitize_filename(&track.album);
+            let file_dir = data_dir.join(&safe_artist).join(&safe_album);
             if !file_dir.exists() {
                 if fs::create_dir_all(&file_dir).await.is_err() {
                     log::error!("Failed to create directory for track: {}", file_dir.display());
@@ -1279,8 +1284,8 @@ async fn track_download_and_update(
     tx: &Sender<Status>,
     cancel_rx: &mut broadcast::Receiver<Vec<String>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let path = dirs::data_dir().unwrap().join("jellyfin-tui").join("downloads");
-    let temp_file = path.join("jellyfin-tui-track.part");
+    let path = dirs::data_dir().unwrap().join("navidrome-tui").join("downloads");
+    let temp_file = path.join("navidrome-tui-track.part");
     if temp_file.exists() {
         let _ = fs::remove_file(&temp_file).await;
     }
@@ -1302,13 +1307,29 @@ async fn track_download_and_update(
         tx.send(Status::TrackDownloading { track: track.clone() }).await?;
     }
 
-    // Download a song
+    // Download a song — detect extension from Content-Type
     let mut total_size: i64 = 0;
+    let mut detected_ext = String::from("mp3"); // safe default
     let download_result = async {
         let mut downloaded: u64 = 0;
         let mut response = reqwest::get(url).await?;
         if let Some(content_length) = response.headers().get(CONTENT_LENGTH) {
             total_size = content_length.to_str()?.parse()?;
+        }
+        // Detect audio format from Content-Type header
+        if let Some(ct) = response.headers().get(reqwest::header::CONTENT_TYPE) {
+            if let Ok(ct_str) = ct.to_str() {
+                detected_ext = match ct_str.split(';').next().unwrap_or("").trim() {
+                    "audio/flac" => "flac",
+                    "audio/ogg" | "application/ogg" => "ogg",
+                    "audio/opus" => "opus",
+                    "audio/aac" | "audio/x-aac" => "aac",
+                    "audio/x-m4a" | "audio/mp4" => "m4a",
+                    "audio/wav" | "audio/x-wav" => "wav",
+                    "audio/aiff" | "audio/x-aiff" => "aiff",
+                    _ => "mp3",
+                }.to_string();
+            }
         }
         let mut last_update = Instant::now();
         let mut file = fs::File::create(&temp_file).await?;
@@ -1358,8 +1379,11 @@ async fn track_download_and_update(
                 .fetch_one(&mut *tx_db)
                 .await;
 
-                let file_path = file_dir.join(format!("{}", track.id));
-                if let Err(e) = fs::rename(&temp_file, file_path).await {
+                // Build readable filename: Artist - Title.ext
+                let artist = track.artists.first().cloned().unwrap_or_else(|| track.album_artist.clone());
+                let safe_name = sanitize_filename(&format!("{} - {}", artist, track.name));
+                let file_path = file_dir.join(format!("{}.{}", safe_name, detected_ext));
+                if let Err(e) = fs::rename(&temp_file, &file_path).await {
                     return Err(Box::new(e));
                 }
 
@@ -1540,7 +1564,7 @@ pub async fn mark_missing(
     let mut deleted_artists = false;
     let mut deleted_playlists = false;
     let mut album_paths_to_delete: Vec<PathBuf> = Vec::new();
-    let data_dir = dirs::data_dir().unwrap().join("jellyfin-tui").join("downloads").join(server_id);
+    let data_dir = dirs::data_dir().unwrap().join("navidrome-tui").join("downloads").join(server_id);
 
     let mut tx = pool.begin().await?;
 
@@ -1818,4 +1842,26 @@ pub async fn mark_missing(
     }
 
     Ok(())
+}
+
+/// Sanitizes a string to be safe as a filename on Windows, Linux and macOS.
+/// Replaces forbidden characters with underscores and trims trailing dots/spaces.
+fn sanitize_filename(name: &str) -> String {
+    let forbidden = ['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
+    let mut s: String = name
+        .chars()
+        .map(|c| if forbidden.contains(&c) { '_' } else { c })
+        .collect();
+    // Windows forbids trailing dots and spaces
+    while s.ends_with('.') || s.ends_with(' ') {
+        s.pop();
+    }
+    if s.is_empty() {
+        s = String::from("unknown");
+    }
+    // Truncate to 200 chars to stay well under filesystem limits
+    if s.len() > 200 {
+        s.truncate(200);
+    }
+    s
 }

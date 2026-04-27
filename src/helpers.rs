@@ -121,7 +121,8 @@ pub fn normalize_mpvsafe_url(raw: &str) -> Result<String, String> {
 }
 
 pub async fn run_shell_command(cmd: &String) {
-    if let Err(e) = Command::new("sh").arg("-c").arg(cmd).spawn() {
+    let (shell, arg) = if cfg!(windows) { ("cmd", "/C") } else { ("sh", "-c") };
+    if let Err(e) = Command::new(shell).arg(arg).arg(cmd).spawn() {
         log::error!("Failed to run shell command '{}': {:#?}", cmd, e);
     }
 }
@@ -370,7 +371,7 @@ impl State {
         offline: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let data_dir = data_dir().unwrap();
-        let states_dir = data_dir.join("jellyfin-tui").join("states");
+        let states_dir = data_dir.join("navidrome-tui").join("states");
 
         let filename = if offline {
             format!("offline_{}.json", server_id)
@@ -396,7 +397,7 @@ impl State {
     ///
     pub fn load(server_id: &String, is_offline: bool) -> Result<State, Box<dyn std::error::Error>> {
         let data_dir = data_dir().unwrap();
-        let states_dir = data_dir.join("jellyfin-tui").join("states");
+        let states_dir = data_dir.join("navidrome-tui").join("states");
         match OpenOptions::new().read(true).open(states_dir.join(if is_offline {
             format!("offline_{}.json", server_id)
         } else {
@@ -583,7 +584,7 @@ impl Preferences {
     ///
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let data_dir = data_dir().unwrap();
-        let preferences_dir = data_dir.join("jellyfin-tui").join("preferences");
+        let preferences_dir = data_dir.join("navidrome-tui").join("preferences");
         match OpenOptions::new()
             .create(true)
             .write(true)
@@ -605,7 +606,7 @@ impl Preferences {
     ///
     pub fn load(server_id: String) -> Result<Preferences, Box<dyn std::error::Error>> {
         let data_dir = data_dir().unwrap();
-        let base_dir = data_dir.join("jellyfin-tui");
+        let base_dir = data_dir.join("navidrome-tui");
         let preferences_dir = base_dir.join("preferences");
 
         let new_path = preferences_dir.join(format!("{}.json", server_id));
