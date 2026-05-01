@@ -161,17 +161,19 @@ impl App {
             s.original_index = i as i64;
         }
 
+        if self.state.shuffle && self.state.queue.len() > 1 {
+            let first = self.state.queue.remove(0);
+            self.state.queue.shuffle(&mut rand::rng());
+            self.state.queue.insert(0, first);
+        }
+
         if let Err(e) = self.start_new_queue().await {
             log::error!("Failed to start playlist: {}", e);
             self.set_generic_message("Failed to start playlist", &e.to_string());
             return;
         }
-        if self.state.shuffle {
-            self.do_shuffle(true).await;
-            // select the first song in the queue
-            self.mpv_handle.play_index(0).await;
-            self.state.selected_queue_item.select(Some(0));
-        }
+
+        self.state.selected_queue_item.select(Some(0));
 
         let _ = self
             .db
