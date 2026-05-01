@@ -1704,9 +1704,9 @@ impl App {
                     if self.buffering {
                         self.spinner_stages[self.spinner]
                     } else if self.paused ^ self.swap_play_pause {
-                        "⏸︎"
+                        "[||]"
                     } else {
-                        "►"
+                        "[>]"
                     },
                     percentage,
                 ))),
