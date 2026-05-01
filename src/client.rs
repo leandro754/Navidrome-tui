@@ -93,6 +93,7 @@ struct SubsonicResponseData {
     random_songs: Option<RandomSongs>,
     playlists: Option<SubsonicPlaylists>,
     playlist: Option<SubsonicPlaylistWithSongs>,
+    lyrics_list: Option<SubsonicLyricsList>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,6 +178,27 @@ struct SubsonicSong {
     genre: Option<String>,
     created: Option<String>,
     starred: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubsonicLyricsList {
+    structured_lyrics: Option<Vec<SubsonicStructuredLyric>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubsonicStructuredLyric {
+    line: Vec<SubsonicLyricLine>,
+    synced: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubsonicLyricLine {
+    #[serde(default)]
+    start: u64,
+    value: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -646,9 +668,51 @@ impl Client {
         Ok(vec![])
     }
 
-    pub async fn lyrics(&self, _song_id: &String) -> Result<Vec<Lyric>, reqwest::Error> {
-        // Just return empty, Subsonic lyric API isn't exactly like this and often unsupported
-        Ok(vec![])
+    pub async fn lyrics(&self, song_id: &String) -> Result<Vec<Lyric>, reqwest::Error> {
+        let url = format!(
+            "{}/rest/getLyricsBySongId.view?id={}&{}",
+            self.base_url,
+            song_id,
+            self.auth_query()
+        );
+        let req = self.http_client.get(&url);
+
+        let root: SubsonicResponseRoot = match self.get_json_with_retry(req).await {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("Lyrics request failed for '{}': {}", song_id, e);
+                return Ok(vec![]);
+            }
+        };
+
+        let mut lyrics = vec![];
+        if let Some(lyrics_list) = root.response.lyrics_list {
+            if let Some(structured) = lyrics_list.structured_lyrics {
+                for sl in &structured {
+                    if sl.synced {
+                        for line in &sl.line {
+                            lyrics.push(Lyric {
+                                text: line.value.clone(),
+                                start: line.start * 10_000,
+                            });
+                        }
+                    }
+                }
+                if lyrics.is_empty() {
+                    for sl in &structured {
+                        if !sl.synced {
+                            for line in &sl.line {
+                                lyrics.push(Lyric {
+                                    text: line.value.clone(),
+                                    start: 0,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(lyrics)
     }
 
     pub async fn download_cover_art(
