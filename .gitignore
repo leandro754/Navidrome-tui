@@ -8,6 +8,7 @@
 *.dylib
 *.lib
 *.pdb
+*.exp
 
 # Tu configuración actual
 config.yaml
