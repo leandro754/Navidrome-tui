@@ -1,3 +1,4 @@
+use crate::client::Client;
 use crate::tui::Song;
 use discord_rich_presence::activity::StatusDisplayType;
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
@@ -12,6 +13,10 @@ pub enum DiscordCommand {
         percentage_played: f64,
         paused: bool,
         status_display_type: StatusDisplayType,
+        /// The authenticated Subsonic client, used to fetch a public album art URL
+        /// via `getAlbumInfo2`. The returned URL comes from Last.fm/MusicBrainz and
+        /// is safe to give to Discord without exposing credentials.
+        client: Arc<Client>,
     },
     Stopped,
 }
@@ -22,6 +27,15 @@ pub fn t_discord(mut rx: Receiver<DiscordCommand>, client_id: u64) {
 
     let mut last_track_id = String::new();
     let mut last_start_time: Option<chrono::DateTime<chrono::Local>> = None;
+    // Cache the last resolved art URL so we don't hit Last.fm on every update tick
+    let mut last_art_url: Option<String> = None;
+    let mut last_art_album_id = String::new();
+
+    // Tokio runtime for the blocking thread to make async calls (album art fetch)
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("discord thread tokio runtime");
 
     reconnect_loop(&mut drpc, client_id);
 
@@ -36,6 +50,7 @@ pub fn t_discord(mut rx: Receiver<DiscordCommand>, client_id: u64) {
                 percentage_played,
                 paused,
                 status_display_type,
+                client,
             } => {
                 let duration_secs = track.run_time_ticks as f64 / 10_000_000f64;
                 let elapsed_secs = (duration_secs * percentage_played).round() as i64;
@@ -62,23 +77,34 @@ pub fn t_discord(mut rx: Receiver<DiscordCommand>, client_id: u64) {
                     }
                 };
 
-                let end_time = start_time + chrono::Duration::seconds(duration_secs.round() as i64);
+                let end_time =
+                    start_time + chrono::Duration::seconds(duration_secs.round() as i64);
 
-                // log::info!(
-                //     "Track duration: {:.2} seconds, Elapsed: {} seconds",
-                //    duration_secs,
-                //    elapsed_secs
-                //);
+                // Resolve album art URL. Re-fetch only when the album changes.
+                let large_image: &str = if !track.album_id.is_empty() {
+                    if track.album_id != last_art_album_id {
+                        last_art_album_id = track.album_id.clone();
+                        last_art_url =
+                            rt.block_on(client.get_album_art_url(&track.album_id));
+                        log::debug!(
+                            "Discord: resolved album art URL: {:?}",
+                            last_art_url
+                        );
+                    }
+                    last_art_url.as_deref().unwrap_or("cover-placeholder")
+                } else {
+                    "cover-placeholder"
+                };
 
                 let state = track.artist.chars().take(128).collect::<String>();
 
                 // Note: Images cover-placeholder, paused and playing need to be registered
                 // on Discord's dev portal to show up in the Rich Presence.
                 let mut assets = activity::Assets::new()
-                    .large_image("cover-placeholder")
-                // This is supposed to only be shown when hovering over the large image in the status.
-                // However, Discord also seems to show it as a third regular line of text now.
-                .large_text(track.album);
+                    .large_image(large_image)
+                    // This is supposed to only be shown when hovering over the large image in the status.
+                    // However, Discord also seems to show it as a third regular line of text now.
+                    .large_text(track.album);
 
                 assets = if paused {
                     assets.small_image("paused").small_text("Paused")

@@ -94,6 +94,8 @@ struct SubsonicResponseData {
     playlists: Option<SubsonicPlaylists>,
     playlist: Option<SubsonicPlaylistWithSongs>,
     lyrics_list: Option<SubsonicLyricsList>,
+    #[allow(dead_code)]
+    album_info: Option<SubsonicAlbumInfoWrapper>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,6 +201,31 @@ struct SubsonicLyricLine {
     #[serde(default)]
     start: u64,
     value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubsonicAlbumInfoWrapper {
+    #[serde(rename = "smallImageUrl", default)]
+    small_image_url: Option<String>,
+    #[serde(rename = "largeImageUrl", default)]
+    large_image_url: Option<String>,
+}
+
+// Container used by getAlbumInfo response root
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AlbumInfoResponseData {
+    status: String,
+    #[serde(rename = "albumInfo")]
+    album_info: Option<SubsonicAlbumInfoWrapper>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AlbumInfoResponseRoot {
+    #[serde(rename = "subsonic-response")]
+    response: AlbumInfoResponseData,
 }
 
 #[derive(Debug, Deserialize)]
@@ -402,6 +429,31 @@ impl Client {
             Some(ms) => NetworkQuality::classify(ms),
             None => NetworkQuality::CzechTrain,
         }
+    }
+
+    /// Fetches the public album art URL for a given album ID via the Subsonic `getAlbumInfo` endpoint.
+    /// Navidrome proxies Last.fm/MusicBrainz image URLs here, so the returned URL is publicly
+    /// accessible without credentials — safe to pass directly to Discord Rich Presence.
+    pub async fn get_album_art_url(&self, album_id: &str) -> Option<String> {
+        let url = format!(
+            "{}/rest/getAlbumInfo2.view?id={}&{}",
+            self.base_url, album_id, self.auth_query()
+        );
+        let resp = self
+            .http_client
+            .get(&url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .ok()?;
+
+        let root: AlbumInfoResponseRoot = resp.json().await.ok()?;
+        if root.response.status != "ok" {
+            return None;
+        }
+        let info = root.response.album_info?;
+        // Prefer the large image, fall back to small
+        info.large_image_url.or(info.small_image_url)
     }
 
     pub async fn music_libraries(&self) -> Result<Vec<LibraryView>, reqwest::Error> {

@@ -1479,13 +1479,14 @@ impl App {
 
         if let Some((discord_tx, .., status_display_type)) = &mut self.discord {
             let playback = &self.state.current_playback_state;
-            if self.client.is_some() {
+            if let Some(client) = self.client.clone() {
                 let _ = discord_tx
                     .send(crate::discord::DiscordCommand::Playing {
                         track: song.clone(),
                         percentage_played: playback.position / playback.duration,
                         paused: self.paused,
                         status_display_type: status_display_type.clone(),
+                        client,
                     })
                     .await;
             }
@@ -1533,14 +1534,17 @@ impl App {
                 match self.state.queue.get(self.state.current_playback_state.current_index).cloned()
                 {
                     Some(song) => {
-                        let _ = discord_tx
-                            .send(crate::discord::DiscordCommand::Playing {
-                                track: song.clone(),
-                                percentage_played: playback.position / playback.duration,
-                                paused: self.paused,
-                                status_display_type: status_display_type.clone(),
-                            })
-                            .await;
+                        if let Some(client) = self.client.clone() {
+                            let _ = discord_tx
+                                .send(crate::discord::DiscordCommand::Playing {
+                                    track: song.clone(),
+                                    percentage_played: playback.position / playback.duration,
+                                    paused: self.paused,
+                                    status_display_type: status_display_type.clone(),
+                                    client,
+                                })
+                                .await;
+                        }
                     }
                     None => {
                         let _ = discord_tx.send(crate::discord::DiscordCommand::Stopped).await;
