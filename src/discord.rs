@@ -10,9 +10,7 @@ pub enum DiscordCommand {
     Playing {
         track: Song,
         percentage_played: f64,
-        server_url: String,
         paused: bool,
-        show_art: bool,
         status_display_type: StatusDisplayType,
     },
     Stopped,
@@ -36,9 +34,7 @@ pub fn t_discord(mut rx: Receiver<DiscordCommand>, client_id: u64) {
             DiscordCommand::Playing {
                 track,
                 percentage_played,
-                server_url,
                 paused,
-                show_art,
                 status_display_type,
             } => {
                 let duration_secs = track.run_time_ticks as f64 / 10_000_000f64;
@@ -78,17 +74,8 @@ pub fn t_discord(mut rx: Receiver<DiscordCommand>, client_id: u64) {
 
                 // Note: Images cover-placeholder, paused and playing need to be registered
                 // on Discord's dev portal to show up in the Rich Presence.
-                let mut assets = activity::Assets::new();
-
-                let url = format!(
-                    "{}/Items/{}/Images/Primary?fillHeight=480&fillWidth=480",
-                    server_url, track.album_id
-                );
-                assets = if show_art {
-                    assets.large_image(url.as_str())
-                } else {
-                    assets.large_image("cover-placeholder")
-                }
+                let mut assets = activity::Assets::new()
+                    .large_image("cover-placeholder")
                 // This is supposed to only be shown when hovering over the large image in the status.
                 // However, Discord also seems to show it as a third regular line of text now.
                 .large_text(track.album);
