@@ -280,10 +280,13 @@ impl MpvHandle {
             .map(|seq| seq.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
 
-        let data_dir = dirs::data_dir().unwrap().join("navidrome-tui").join("mpv-scripts");
+        let data_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("navidrome-tui")
+            .join("mpv-scripts");
 
         let mpv = Mpv::with_initializer(|init| {
-            init.set_option("msg-level", "ffmpeg/demuxer=no").unwrap();
+            let _ = init.set_option("msg-level", "ffmpeg/demuxer=no");
             Ok(())
         })
         .expect(" [XX] Failed to initiate mpv context");
@@ -323,9 +326,9 @@ impl MpvHandle {
             }
         }
 
-        mpv.set_property("vo", "null").unwrap();
-        mpv.set_property("volume", 100).unwrap();
-        mpv.set_property("prefetch-playlist", "yes").unwrap(); // gapless playback
+        let _ = mpv.set_property("vo", "null");
+        let _ = mpv.set_property("volume", 100);
+        let _ = mpv.set_property("prefetch-playlist", "yes"); // gapless playback
 
         // no console output (it shifts the tui around)
         let _ = mpv.set_property("quiet", "yes");
@@ -341,10 +344,11 @@ impl MpvHandle {
                         continue;
                     }
                     if let Some(value) = value.as_str() {
-                        mpv.set_property(key, value).unwrap_or_else(|e| {
-                            panic!("This is not a valid mpv property {key}: {:?}", e)
-                        });
-                        log::info!("Set mpv property: {} = {}", key, value);
+                        if let Err(e) = mpv.set_property(key, value) {
+                            log::warn!("This is not a valid mpv property {key}: {:?}", e);
+                        } else {
+                            log::info!("Set mpv property: {} = {}", key, value);
+                        }
                     }
                 }
             } else {
@@ -352,9 +356,9 @@ impl MpvHandle {
             }
         }
 
-        mpv.disable_deprecated_events().unwrap();
-        mpv.observe_property("volume", Format::Int64, 0).unwrap();
-        mpv.observe_property("demuxer-cache-state", Format::Node, 0).unwrap();
+        let _ = mpv.disable_deprecated_events();
+        let _ = mpv.observe_property("volume", Format::Int64, 0);
+        let _ = mpv.observe_property("demuxer-cache-state", Format::Node, 0);
 
         let (tx, rx) = std::sync::mpsc::channel::<MpvCommand>();
 
@@ -471,7 +475,9 @@ impl MpvHandle {
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 // #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum LoadFileFlag {
+    #[default]
     Replace,
     Append,
     AppendPlay,
@@ -480,11 +486,7 @@ pub enum LoadFileFlag {
     InsertAt,
     InsertAtPlay,
 }
-impl Default for LoadFileFlag {
-    fn default() -> Self {
-        LoadFileFlag::Replace
-    }
-}
+
 
 impl LoadFileFlag {
     pub fn as_str(self) -> &'static str {

@@ -37,6 +37,8 @@ pub enum Command {
     DislikeTrack { track_id: String, disliked: bool },
 }
 
+/// Represents the current operational status of the background task or download.
+#[allow(clippy::large_enum_variant)]
 pub enum Status {
     TrackQueued { id: String },
     TrackDownloading { track: DiscographySong },
@@ -69,7 +71,9 @@ pub struct DownloadItem {
     pub progress: f32,
 }
 
+/// Commands related to downloading tracks or cover art for offline usage.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum DownloadCommand {
     Track { track: DiscographySong, playlist_id: Option<String> },
     Tracks { tracks: Vec<DiscographySong> },
@@ -86,6 +90,7 @@ pub enum UpdateCommand {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum RemoveCommand {
     Track { track: DiscographySong },
     Tracks { tracks: Vec<DiscographySong> },
@@ -110,7 +115,8 @@ pub enum NavidromeCommand {
 
 /// This is the main background thread. It queues and processes downloads and background updates.
 ///
-pub async fn t_database<'a>(
+#[allow(clippy::too_many_arguments)]
+pub async fn t_database(
     pool: Arc<Pool<Sqlite>>,
     mut rx: Receiver<Command>,
     tx: Sender<Status>,
@@ -165,11 +171,8 @@ pub async fn t_database<'a>(
                                                 .execute(&*pool)
                                                 .await;
                                         }
-                                        UpdateCommand::OfflineRepair { .. } => {
-                                            let should_spawn = match &active_task {
-                                                Some(handle) if !handle.is_finished() => false,
-                                                _ => true,
-                                            };
+                                        UpdateCommand::OfflineRepair => {
+                                            let should_spawn = !matches!(&active_task, Some(handle) if !handle.is_finished());
 
                                             if should_spawn {
                                                 log::info!("Spawning offline track checker...");
@@ -277,8 +280,8 @@ pub async fn t_database<'a>(
                 match cmd {
                     Command::Download(download_cmd) => {
                         match download_cmd {
-                            DownloadCommand::Track { mut track, playlist_id } => {
-                                if let Err(e) = query_download_track(&pool, &mut track, &playlist_id).await {
+                            DownloadCommand::Track { track, playlist_id } => {
+                                if let Err(e) = query_download_track(&pool, &track, &playlist_id).await {
                                     log::error!("Failed to query download track: {}", e);
                                 }
                                 let _ = tx.send(Status::TrackQueued { id: track.id }).await;
@@ -405,11 +408,10 @@ pub async fn t_database<'a>(
                 }
             },
             _ = large_update_interval.tick() => {
-                if last_quality == NetworkQuality::Normal {
-                    if active_task.is_none() {
+                if last_quality == NetworkQuality::Normal
+                    && active_task.is_none() {
                         active_task = Some(tokio::spawn(t_data_updater(Arc::clone(&pool), tx.clone(), client.clone())));
                     }
-                }
             },
             // this is here to adjust the network quality checking interval dynamically
             // for example, if you're on a train we want to disable auto updates and downloads
@@ -1118,9 +1120,9 @@ async fn offline_tracks_checker(
 
     // Check file existence per album
     for (album_id, track_ids) in &grouped_tracks {
-        let album_path = data_dir.join(&server_id).join(&album_id);
+        let album_path = data_dir.join(&server_id).join(album_id);
         for id in track_ids {
-            let file_path = album_path.join(&id);
+            let file_path = album_path.join(id);
             if tokio::fs::metadata(&file_path).await.is_err() {
                 missing_ids.push(id.clone());
                 let _ = tx.send(Status::TrackDeleted { id: id.clone() }).await;
@@ -1143,18 +1145,13 @@ async fn offline_tracks_checker(
     let elapsed_time = start_time.elapsed();
     log::info!(
         "Offline tracks checker finished. Checked {} tracks in {:.2}s.",
-        grouped_tracks.iter().map(|(_, v)| v.len()).sum::<usize>(),
+        grouped_tracks.values().map(|v| v.len()).sum::<usize>(),
         elapsed_time.as_secs_f32()
     );
 
     Ok(())
 }
 
-/// Deletes local albums for the given server that are not present in the remote list.
-/// Uses a temporary table to store remote album IDs.
-///
-/// Returns the number of rows affected.
-// async fn delete_missing_albums(
 //     pool: &SqlitePool,
 //     server_id: &str,
 //     remote_album_ids: &[String],
@@ -1192,7 +1189,7 @@ async fn track_process_queued_download(
     pool: &SqlitePool,
     tx: &Sender<Status>,
     client: &Client,
-    data_dir: &std::path::PathBuf,
+    data_dir: &std::path::Path,
     cancel_tx: &broadcast::Sender<Vec<String>>,
 ) -> Option<tokio::task::JoinHandle<()>> {
     let mut cancel_rx = cancel_tx.subscribe();
@@ -1236,12 +1233,11 @@ async fn track_process_queued_download(
             let safe_artist = sanitize_filename(&artist);
             let safe_album = sanitize_filename(&track.album);
             let file_dir = data_dir.join(&safe_artist).join(&safe_album);
-            if !file_dir.exists() {
-                if fs::create_dir_all(&file_dir).await.is_err() {
+            if !file_dir.exists()
+                && fs::create_dir_all(&file_dir).await.is_err() {
                     log::error!("Failed to create directory for track: {}", file_dir.display());
                     return None;
                 }
-            }
 
             // this will pull it if it doesn't exist already. // TODO: use the cache...
             let _ = client.download_cover_art(&track.parent_id).await;
@@ -1347,7 +1343,7 @@ async fn track_download_and_update(
                 // this lets the user cancel a download in progress
                 match cancel_rx.try_recv() {
                     Ok(to_cancel) if to_cancel.contains(&track.id) => {
-                        let _ = tx.send(Status::TrackDeleted { id: track.id.to_string() }).await?;
+                        tx.send(Status::TrackDeleted { id: track.id.to_string() }).await?;
                         sqlx::query(
                             "UPDATE tracks SET download_status = 'NotDownloaded' WHERE id = ?",
                         )
@@ -1470,8 +1466,8 @@ async fn rename_playlist(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut tx_db = pool.begin().await?;
     sqlx::query("UPDATE playlists SET playlist = json_set(playlist, '$.Name', ?) WHERE id = ?")
-        .bind(&new_name)
-        .bind(&playlist_id)
+        .bind(new_name)
+        .bind(playlist_id)
         .execute(&mut *tx_db)
         .await?;
     tx_db.commit().await?;

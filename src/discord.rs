@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 
+#[allow(clippy::large_enum_variant)]
 pub enum DiscordCommand {
     Playing {
         track: Song,

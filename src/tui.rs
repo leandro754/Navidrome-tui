@@ -778,7 +778,7 @@ impl App {
             sort::compare(&a.name.to_ascii_lowercase(), &b.name.to_ascii_lowercase())
         });
         self.playlists
-            .sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+            .sort_by_key(|a| a.name.to_ascii_lowercase());
 
         match self.preferences.artist_filter {
             Filter::FavoritesFirst => {
@@ -865,8 +865,8 @@ impl App {
                         non_favorites.sort_by(|a, b| b.premiere_date.cmp(&a.premiere_date));
                     }
                     Sort::Duration => {
-                        favorites.sort_by(|a, b| b.run_time_ticks.cmp(&a.run_time_ticks));
-                        non_favorites.sort_by(|a, b| b.run_time_ticks.cmp(&a.run_time_ticks));
+                        favorites.sort_by_key(|b| std::cmp::Reverse(b.run_time_ticks));
+                        non_favorites.sort_by_key(|b| std::cmp::Reverse(b.run_time_ticks));
                     }
                     Sort::Random => {
                         let mut rng = rand::rng();
@@ -892,7 +892,7 @@ impl App {
                         self.albums.sort_by(|a, b| b.premiere_date.cmp(&a.premiere_date));
                     }
                     Sort::Duration => {
-                        self.albums.sort_by(|a, b| b.run_time_ticks.cmp(&a.run_time_ticks));
+                        self.albums.sort_by_key(|b| std::cmp::Reverse(b.run_time_ticks));
                     }
                     Sort::Random => {
                         let mut rng = rand::rng();
@@ -998,7 +998,7 @@ impl App {
 
         // sort the songs within each album by indexnumber
         for album in albums.iter_mut() {
-            album.songs.sort_by(|a, b| a.index_number.cmp(&b.index_number));
+            album.songs.sort_by_key(|a| a.index_number);
         }
 
         if self.preferences.tracks_sort == Sort::Random {
@@ -1090,7 +1090,7 @@ impl App {
 
         // sort over parent_index_number to separate into separate disks
         for album in albums.iter_mut() {
-            album.songs.sort_by(|a, b| a.parent_index_number.cmp(&b.parent_index_number));
+            album.songs.sort_by_key(|a| a.parent_index_number);
         }
 
         // now we flatten the albums back into a list of songs

@@ -901,7 +901,7 @@ impl PopupMenu {
                         format!(
                             "Jump to current artist: {}",
                             artists
-                                .into_iter()
+                                .iter()
                                 .map(|a| a.name.clone())
                                 .collect::<Vec<String>>()
                                 .join(", ")
@@ -1128,7 +1128,7 @@ impl crate::tui::App {
     ///
     pub async fn process_popup_action(&mut self, action: &Action) {
         if self.popup.editing {
-            self.handle_editing_action(&action).await;
+            self.handle_editing_action(action).await;
             match &mut self.popup.current_menu {
                 Some(PopupMenu::PlaylistSetName { new_name, .. }) => {
                     *new_name = self.popup.editing_new.clone();
@@ -1141,11 +1141,11 @@ impl crate::tui::App {
             return;
         }
         if self.locally_searching {
-            self.handle_popup_search_action(&action).await;
+            self.handle_popup_search_action(action).await;
             return;
         }
-        self.handle_popup_special_action(&action).await;
-        self.handle_popup_navigation_action(&action).await;
+        self.handle_popup_special_action(action).await;
+        self.handle_popup_navigation_action(action).await;
         // if let Action::Type('/') = action {
         //     self.locally_searching = true;
         // }
@@ -1382,7 +1382,8 @@ impl crate::tui::App {
             },
             ActiveTab::Playlists => match self.state.last_section {
                 ActiveSection::List => {
-                    if let None = self.apply_playlist_action(&action, menu.clone()).await {
+                    #[allow(clippy::collapsible_match)]
+                    if self.apply_playlist_action(&action, menu.clone()).await.is_none() {
                         self.close_popup();
                     }
                 }
@@ -1440,8 +1441,7 @@ impl crate::tui::App {
                     self.popup.selected.select_first();
                 }
                 PopupCommand::OfflineRepair => {
-                    if let Ok(_) =
-                        self.db.cmd_tx.send(Command::Update(UpdateCommand::OfflineRepair)).await
+                    if self.db.cmd_tx.send(Command::Update(UpdateCommand::OfflineRepair)).await.is_ok()
                     {
                         self.db_updating = true;
                         self.close_popup();
@@ -1461,7 +1461,7 @@ impl crate::tui::App {
                         Ok(_) => self.close_popup(),
                         Err(e) => self.set_generic_message(
                             "Failed to abort downloads",
-                            &format!("Error: {}", e.to_string()),
+                            &format!("Error: {}", e),
                         ),
                     }
                 }
@@ -1785,6 +1785,7 @@ impl crate::tui::App {
                         self.close_popup();
                         return Some(());
                     }
+                    #[allow(clippy::cloned_ref_to_slice_refs)]
                     self.append_to_main_queue(&[track.clone()], 0).await;
                     self.close_popup();
                 }
@@ -1802,6 +1803,7 @@ impl crate::tui::App {
                         self.close_popup();
                         return Some(());
                     }
+                    #[allow(clippy::cloned_ref_to_slice_refs)]
                     self.push_to_temporary_queue(&[track.clone()], 0, 1).await;
                     self.close_popup();
                 }
@@ -1842,7 +1844,7 @@ impl crate::tui::App {
                     let client = self.client.as_ref()?;
                     let fetch_id =
                         if self.preferences.track_based_art { &track.id } else { &track.parent_id };
-                    if let Err(_) = client.download_cover_art(fetch_id).await {
+                    if client.download_cover_art(fetch_id).await.is_err() {
                         self.set_generic_message(
                             "Error fetching artwork",
                             &format!("Failed to fetch artwork for track {}.", track.name),
@@ -1867,8 +1869,7 @@ impl crate::tui::App {
             PopupMenu::TrackAddToPlaylist { track_name, track_id, playlists } => match action {
                 PopupCommand::AddToPlaylist { playlist_id } => {
                     let playlist = playlists.iter().find(|p| p.id == *playlist_id)?;
-                    if let Err(_) =
-                        self.client.as_ref()?.add_to_playlist(&track_id, playlist_id).await
+                    if self.client.as_ref()?.add_to_playlist(&track_id, playlist_id).await.is_err()
                     {
                         self.set_generic_message(
                             "Error adding track",
@@ -1878,10 +1879,9 @@ impl crate::tui::App {
                             ),
                         );
                     }
-                    self.playlists
-                        .iter_mut()
-                        .find(|p| p.id == playlist.id)
-                        .map(|p| p.child_count += 1);
+                    if let Some(p) = self.playlists.iter_mut().find(|p| p.id == playlist.id) {
+                        p.child_count += 1;
+                    }
 
                     self.set_generic_message(
                         "Track added",
@@ -1973,13 +1973,13 @@ impl crate::tui::App {
                         };
 
                         // need to make sure the album is in the db
-                        if let Err(_) = t_discography_updater(
+                        if t_discography_updater(
                             Arc::clone(&self.db.pool),
                             parent.clone(),
                             self.db.status_tx.clone(),
                             self.client.clone().unwrap(), /* this fn is online guarded */
                         )
-                        .await
+                        .await.is_err()
                         {
                             self.set_generic_message(
                                 "Error downloading album",
@@ -2209,8 +2209,7 @@ impl crate::tui::App {
             PopupMenu::TrackAddToPlaylist { track_name, track_id, playlists } => match action {
                 PopupCommand::AddToPlaylist { playlist_id } => {
                     let playlist = playlists.iter().find(|p| p.id == *playlist_id)?;
-                    if let Err(_) =
-                        self.client.as_ref()?.add_to_playlist(&track_id, playlist_id).await
+                    if self.client.as_ref()?.add_to_playlist(&track_id, playlist_id).await.is_err()
                     {
                         self.set_generic_message(
                             "Error adding track",
@@ -2220,10 +2219,9 @@ impl crate::tui::App {
                             ),
                         );
                     }
-                    self.playlists
-                        .iter_mut()
-                        .find(|p| p.id == playlist.id)
-                        .map(|p| p.child_count += 1);
+                    if let Some(p) = self.playlists.iter_mut().find(|p| p.id == playlist.id) {
+                        p.child_count += 1;
+                    }
 
                     self.set_generic_message(
                         "Track added",
@@ -2318,8 +2316,7 @@ impl crate::tui::App {
             PopupMenu::PlaylistTrackAddToPlaylist { track_name, track_id, playlists } => {
                 if let PopupCommand::AddToPlaylist { playlist_id } = action {
                     let playlist = playlists.iter().find(|p| p.id == *playlist_id)?;
-                    if let Err(_) =
-                        self.client.as_ref()?.add_to_playlist(&track_id, playlist_id).await
+                    if self.client.as_ref()?.add_to_playlist(&track_id, playlist_id).await.is_err()
                     {
                         self.set_generic_message(
                             "Error adding track",
@@ -2329,10 +2326,9 @@ impl crate::tui::App {
                             ),
                         );
                     }
-                    self.playlists
-                        .iter_mut()
-                        .find(|p| p.id == playlist.id)
-                        .map(|p| p.child_count += 1);
+                    if let Some(p) = self.playlists.iter_mut().find(|p| p.id == playlist.id) {
+                        p.child_count += 1;
+                    }
 
                     self.set_generic_message(
                         "Track added",
