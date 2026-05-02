@@ -98,3 +98,8 @@ Release workflow (`.github/workflows/release.yml`) builds Linux x86_64 and macOS
 
 - No test suite exists yet. When adding tests, name them descriptively: `queue_should_skip_played_tracks_when_shuffle_enabled()`.
 - Test commands ran in CI: `cargo build --release` (no test step).
+
+### Apollo GraphQL Rust Best Practices (Local Skill)
+
+- **Mandatory Context**: This repository includes a local copy of Apollo GraphQL's Rust Best Practices in the `rust-best-practices/` directory.
+- **Agent Instruction**: Whenever writing, refactoring, or reviewing Rust code, you MUST first consult `rust-best-practices/SKILL.md` and read the relevant chapters in `rust-best-practices/references/` to ensure the code adheres to these guidelines.
