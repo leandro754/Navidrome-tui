@@ -276,7 +276,7 @@ pub struct App {
     pub client: Option<Arc<Client>>, // navidrome http client
     pub network_quality: NetworkQuality,
     pub discord:
-        Option<(mpsc::Sender<crate::discord::DiscordCommand>, Instant, bool, StatusDisplayType)>, // discord presence tx
+        Option<(mpsc::Sender<crate::discord::DiscordCommand>, Instant, StatusDisplayType)>, // discord presence tx
     pub downloads_dir: PathBuf,
 
     // mpv is run in a separate thread, this is the handle
@@ -436,7 +436,7 @@ impl App {
 
         // discord presence starts only if a discord id is set in the config
         let discord = if let Some(discord_id) = config.get("discord").and_then(|d| d.as_u64()) {
-            let show_art = config.get("discord_art").and_then(|d| d.as_bool()).unwrap_or_default();
+
             let display_type =
                 config.get("discord_status").and_then(|d| d.as_str()).unwrap_or("state");
             let status_display_type = match display_type {
@@ -452,7 +452,7 @@ impl App {
             thread::spawn(move || {
                 crate::discord::t_discord(cmd_rx, discord_id);
             });
-            Some((cmd_tx, Instant::now(), show_art, status_display_type))
+            Some((cmd_tx, Instant::now(), status_display_type))
         } else {
             None
         };
@@ -778,7 +778,7 @@ impl App {
             sort::compare(&a.name.to_ascii_lowercase(), &b.name.to_ascii_lowercase())
         });
         self.playlists
-            .sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+            .sort_by_key(|a| a.name.to_ascii_lowercase());
 
         match self.preferences.artist_filter {
             Filter::FavoritesFirst => {
@@ -865,8 +865,8 @@ impl App {
                         non_favorites.sort_by(|a, b| b.premiere_date.cmp(&a.premiere_date));
                     }
                     Sort::Duration => {
-                        favorites.sort_by(|a, b| b.run_time_ticks.cmp(&a.run_time_ticks));
-                        non_favorites.sort_by(|a, b| b.run_time_ticks.cmp(&a.run_time_ticks));
+                        favorites.sort_by_key(|b| std::cmp::Reverse(b.run_time_ticks));
+                        non_favorites.sort_by_key(|b| std::cmp::Reverse(b.run_time_ticks));
                     }
                     Sort::Random => {
                         let mut rng = rand::rng();
@@ -892,7 +892,7 @@ impl App {
                         self.albums.sort_by(|a, b| b.premiere_date.cmp(&a.premiere_date));
                     }
                     Sort::Duration => {
-                        self.albums.sort_by(|a, b| b.run_time_ticks.cmp(&a.run_time_ticks));
+                        self.albums.sort_by_key(|b| std::cmp::Reverse(b.run_time_ticks));
                     }
                     Sort::Random => {
                         let mut rng = rand::rng();
@@ -998,7 +998,7 @@ impl App {
 
         // sort the songs within each album by indexnumber
         for album in albums.iter_mut() {
-            album.songs.sort_by(|a, b| a.index_number.cmp(&b.index_number));
+            album.songs.sort_by_key(|a| a.index_number);
         }
 
         if self.preferences.tracks_sort == Sort::Random {
@@ -1090,7 +1090,7 @@ impl App {
 
         // sort over parent_index_number to separate into separate disks
         for album in albums.iter_mut() {
-            album.songs.sort_by(|a, b| a.parent_index_number.cmp(&b.parent_index_number));
+            album.songs.sort_by_key(|a| a.parent_index_number);
         }
 
         // now we flatten the albums back into a list of songs
@@ -1477,16 +1477,14 @@ impl App {
             .send(Command::Update(UpdateCommand::SongPlayed { track_id: song.id.clone() }))
             .await;
 
-        if let Some((discord_tx, .., show_art, status_display_type)) = &mut self.discord {
+        if let Some((discord_tx, .., status_display_type)) = &mut self.discord {
             let playback = &self.state.current_playback_state;
-            if let Some(client) = &self.client {
+            if self.client.is_some() {
                 let _ = discord_tx
                     .send(crate::discord::DiscordCommand::Playing {
                         track: song.clone(),
                         percentage_played: playback.position / playback.duration,
-                        server_url: client.base_url.clone(),
                         paused: self.paused,
-                        show_art: *show_art,
                         status_display_type: status_display_type.clone(),
                     })
                     .await;
@@ -1522,7 +1520,7 @@ impl App {
             return Ok(());
         }
 
-        if let Some((discord_tx, ref mut last_discord_update, show_art, status_display_type)) =
+        if let Some((discord_tx, ref mut last_discord_update, status_display_type)) =
             self.discord.as_mut()
         {
             if last_discord_update.elapsed() < Duration::from_secs(5) && !force {
@@ -1531,7 +1529,7 @@ impl App {
             *last_discord_update = Instant::now();
 
             let playback = &self.state.current_playback_state;
-            if let Some(client) = &self.client {
+            if self.client.is_some() {
                 match self.state.queue.get(self.state.current_playback_state.current_index).cloned()
                 {
                     Some(song) => {
@@ -1539,9 +1537,7 @@ impl App {
                             .send(crate::discord::DiscordCommand::Playing {
                                 track: song.clone(),
                                 percentage_played: playback.position / playback.duration,
-                                server_url: client.base_url.clone(),
                                 paused: self.paused,
-                                show_art: *show_art,
                                 status_display_type: status_display_type.clone(),
                             })
                             .await;

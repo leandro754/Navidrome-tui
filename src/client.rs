@@ -251,6 +251,8 @@ struct SubsonicPlaylistWithSongs {
     date_created: String,
 }
 
+/// The primary HTTP client for interacting with the Subsonic/Navidrome API.
+/// This struct manages authentication, networking, and request construction.
 impl Client {
     pub async fn new(
         server_url: &String,
@@ -453,7 +455,7 @@ impl Client {
                             name: a.name,
                             user_data: UserData {
                                 is_favorite: a.starred.is_some(),
-                                ..Default::default()
+
                             },
                             ..Default::default()
                         });
@@ -654,16 +656,13 @@ impl Client {
 
         let response = req.send().await;
 
-        match response {
-            Ok(json) => {
-                if let Ok(_root) = json.json::<SubsonicResponseRoot>().await {
-                    let _songs: Vec<DiscographySong> = vec![];
-                    // Some servers use similarSongs2 -> song
-                    // If not found, just return random
-                    return self.random_tracks(size, false, false, false).await;
-                }
+        if let Ok(json) = response {
+            if let Ok(_root) = json.json::<SubsonicResponseRoot>().await {
+                let _songs: Vec<DiscographySong> = vec![];
+                // Some servers use similarSongs2 -> song
+                // If not found, just return random
+                return self.random_tracks(size, false, false, false).await;
             }
-            Err(_) => {}
         }
         Ok(vec![])
     }
@@ -991,15 +990,8 @@ impl Client {
         let album_name = s.album.clone().unwrap_or_default();
         let duration_ms = s.duration.unwrap_or(0) * 1000;
         let ticks = duration_ms * 10000;
-        let mut d_song = DiscographySong::default();
-        d_song.id = s.id.clone();
-        d_song.name = s.title.clone();
-        d_song.album = album_name;
-        d_song.album_artist = artist_name.clone();
-        d_song.album_id = s.album_id.unwrap_or_default();
-        d_song.run_time_ticks = ticks;
+        let mut d_song = DiscographySong { id: s.id.clone(), name: s.title.clone(), album: album_name.clone(), album_artist: artist_name.clone(), album_id: s.album_id.unwrap_or_default(), run_time_ticks: ticks, artists: vec![artist_name.clone()], ..Default::default() };
         d_song.user_data.is_favorite = s.starred.is_some();
-        d_song.artists = vec![artist_name.clone()];
         d_song.album_artists =
             vec![Artist { id: String::new(), name: artist_name.clone(), ..Default::default() }];
         d_song.genres = s.genre.into_iter().collect();
@@ -1110,7 +1102,7 @@ impl<'r> FromRow<'r, sqlx::sqlite::SqliteRow> for DiscographySong {
             download_status: serde_json::from_str(row.get::<&str, _>("download_status"))
                 .unwrap_or(DownloadStatus::NotDownloaded),
             disliked: row.get::<i32, _>("disliked") != 0,
-            ..Default::default()
+
         })
     }
 }

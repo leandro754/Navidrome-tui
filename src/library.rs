@@ -55,7 +55,7 @@ impl App {
         };
 
         let lyrics_slot_constraints = if show_panel {
-            if has_lyrics && !self.lyrics.as_ref().map_or(true, |(_, l, _)| l.len() == 1) {
+            if has_lyrics && self.lyrics.as_ref().is_some_and(|(_, l, _)| l.len() != 1) {
                 vec![
                     Constraint::Percentage(68),
                     Constraint::Percentage(32),
@@ -723,7 +723,7 @@ impl App {
             )
             .repeat_highlight_symbol(true);
 
-        self.state.selected_queue_item = self.state.selected_queue_item.clone().with_offset(offset);
+        self.state.selected_queue_item = self.state.selected_queue_item.with_offset(offset);
 
         frame.render_stateful_widget(list, right[1], &mut self.state.selected_queue_item);
 
@@ -1117,7 +1117,7 @@ impl App {
         let duration = format!("{}{:02}:{:02}", hours_optional_text, minutes, seconds);
 
         let selected_is_album =
-            tracks.get(selection).map_or(false, |t| t.id.starts_with("_album_"));
+            tracks.get(selection).is_some_and(|t| t.id.starts_with("_album_"));
 
         let mut header_cells: Vec<&str> =
             vec![if selected_is_album { "Yr." } else { "No." }, "Title", "Album"];
@@ -1395,7 +1395,7 @@ impl App {
         header_cells.push("Duration");
 
         let release = format_release_date(&self.state.current_album.premiere_date)
-            .unwrap_or_else(|| "".to_string());
+            .unwrap_or_default();
 
         let table = Table::new(items, widths)
             .block(
@@ -1633,9 +1633,11 @@ impl App {
             }
         };
 
-        if self.cover_art.is_some() && !self.preferences.large_art {
-            let image = StatefulImage::default();
-            frame.render_stateful_widget(image, bottom_split[1], self.cover_art.as_mut().unwrap());
+        if let Some(art) = self.cover_art.as_mut() {
+            if !self.preferences.large_art {
+                let image = StatefulImage::default();
+                frame.render_stateful_widget(image, bottom_split[1], art);
+            }
         }
 
         let total_seconds = current_track
@@ -1704,9 +1706,9 @@ impl App {
                     if self.buffering {
                         self.spinner_stages[self.spinner]
                     } else if self.paused ^ self.swap_play_pause {
-                        "⏸︎"
+                        "[||]"
                     } else {
-                        "►"
+                        "[>]"
                     },
                     percentage,
                 ))),

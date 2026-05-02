@@ -457,13 +457,12 @@ impl App {
         if let Some(action) = self.keymap.get(&combo).cloned() {
             self.dirty = true;
             self.route_action(&action).await;
-            return;
         }
     }
 
     async fn route_action(&mut self, action: &Action) {
         if self.state.active_section == ActiveSection::Popup {
-            self.process_popup_action(&action).await;
+            self.process_popup_action(action).await;
             return;
         }
         if self.locally_searching {
@@ -497,7 +496,7 @@ impl App {
         }
 
         if self.state.active_tab == ActiveTab::Search {
-            self.process_search_tab_action(&action).await;
+            self.process_search_tab_action(action).await;
             return;
         }
 
@@ -505,7 +504,6 @@ impl App {
             Action::Quit => self.exit().await,
             Action::SearchLocally => {
                 self.locally_searching = true;
-                return;
             }
             Action::Seek(secs) => self.execute_seek(*secs).await,
             Action::CyclePrimaryPanes => self.cycle_section(true),
@@ -561,7 +559,7 @@ impl App {
             Action::DeleteBack => {}
             Action::Type(_) => {}
             Action::Shell(cmd) => {
-                crate::helpers::run_shell_command(&cmd).await;
+                crate::helpers::run_shell_command(cmd).await;
             }
         }
     }
@@ -643,7 +641,6 @@ impl App {
                     },
                     _ => {}
                 }
-                return;
             }
             Action::Enter => {
                 match self.state.active_tab {
@@ -667,7 +664,6 @@ impl App {
                     }
                     _ => {}
                 }
-                return;
             }
             Action::DeleteBack => match self.state.active_tab {
                 ActiveTab::Library => match self.state.active_section {
@@ -1014,31 +1010,17 @@ impl App {
             Selectable::PlaylistTrack => &self.state.playlist_tracks_search_term,
             Selectable::Popup => &self.popup_search_term,
         };
-        let ids = match selectable {
-            Selectable::Artist => {
-                self.artists.iter().map(|a| a.id.clone()).collect::<Vec<String>>()
-            }
-            Selectable::Album => self.albums.iter().map(|a| a.id.clone()).collect::<Vec<String>>(),
-            Selectable::AlbumTrack => {
-                self.album_tracks.iter().map(|t| t.id.clone()).collect::<Vec<String>>()
-            }
-            Selectable::Track => self.tracks.iter().map(|t| t.id.clone()).collect::<Vec<String>>(),
-            Selectable::Playlist => {
-                self.playlists.iter().map(|p| p.id.clone()).collect::<Vec<String>>()
-            }
-            Selectable::PlaylistTrack => {
-                self.playlist_tracks.iter().map(|t| t.id.clone()).collect::<Vec<String>>()
-            }
-            Selectable::Popup => {
-                if let Some(menu) = &self.popup.current_menu {
-                    menu.options().iter().map(|o| String::from(o.id())).collect::<Vec<String>>()
-                } else {
-                    vec![]
-                }
-            }
+        let is_empty = match selectable {
+            Selectable::Artist => self.artists.is_empty(),
+            Selectable::Album => self.albums.is_empty(),
+            Selectable::AlbumTrack => self.album_tracks.is_empty(),
+            Selectable::Track => self.tracks.is_empty(),
+            Selectable::Playlist => self.playlists.is_empty(),
+            Selectable::PlaylistTrack => self.playlist_tracks.is_empty(),
+            Selectable::Popup => self.popup.current_menu.as_ref().is_none_or(|menu| menu.options().is_empty()),
         };
 
-        if id.is_empty() && !ids.is_empty() {
+        if id.is_empty() && !is_empty {
             match selectable {
                 Selectable::Artist => self.artist_select_by_index(0),
                 Selectable::Album => self.album_select_by_index(0),
@@ -1079,7 +1061,7 @@ impl App {
                     .popup
                     .current_menu
                     .as_ref()
-                    .map_or(false, |menu| menu.options()[i].id() == id),
+                    .is_some_and(|menu| menu.options()[i].id() == id),
             }) {
                 match selectable {
                     Selectable::Artist => self.artist_select_by_index(index),
@@ -1093,7 +1075,15 @@ impl App {
                 return;
             }
         }
-        if let Some(index) = ids.iter().position(|i| i == id) {
+        if let Some(index) = match selectable {
+            Selectable::Artist => self.artists.iter().position(|a| a.id == id),
+            Selectable::Album => self.albums.iter().position(|a| a.id == id),
+            Selectable::AlbumTrack => self.album_tracks.iter().position(|t| t.id == id),
+            Selectable::Track => self.tracks.iter().position(|t| t.id == id),
+            Selectable::Playlist => self.playlists.iter().position(|p| p.id == id),
+            Selectable::PlaylistTrack => self.playlist_tracks.iter().position(|t| t.id == id),
+            Selectable::Popup => self.popup.current_menu.as_ref().and_then(|menu| menu.options().iter().position(|o| o.id() == id)),
+        } {
             match selectable {
                 Selectable::Artist => self.artist_select_by_index(index),
                 Selectable::Album => self.album_select_by_index(index),
@@ -1409,7 +1399,6 @@ impl App {
 
                         let next = move_down(self.state.selected_artist.selected(), len);
                         self.artist_select_by_index(next);
-                        return;
                     }
                     ActiveTab::Albums => {
                         let len = if !self.state.albums_search_term.is_empty() {
@@ -1429,7 +1418,6 @@ impl App {
 
                         let next = move_down(self.state.selected_album.selected(), len);
                         self.album_select_by_index(next);
-                        return;
                     }
                     ActiveTab::Playlists => {
                         let len = if !self.state.playlists_search_term.is_empty() {
@@ -1449,7 +1437,6 @@ impl App {
 
                         let next = move_down(self.state.selected_playlist.selected(), len);
                         self.playlist_select_by_index(next);
-                        return;
                     }
                     ActiveTab::Search => {
                         // handle_search_tab_events()
@@ -1499,7 +1486,6 @@ impl App {
 
                     let next = move_down(self.state.selected_playlist_track.selected(), len);
                     self.playlist_track_select_by_index(next);
-                    return;
                 }
             }
             ActiveSection::Queue => {
@@ -1531,12 +1517,9 @@ impl App {
 
     async fn handle_move_item_up(&mut self) {
         match self.state.active_section {
-            ActiveSection::Tracks => match self.state.active_tab {
-                ActiveTab::Playlists => {
-                    self.move_playlist_edit_step(-1);
-                }
-                _ => {}
-            },
+            ActiveSection::Tracks if self.state.active_tab == ActiveTab::Playlists => {
+                self.move_playlist_edit_step(-1);
+            }
             ActiveSection::Queue => {
                 self.move_queue_item_up().await;
             }
@@ -1546,10 +1529,8 @@ impl App {
 
     async fn handle_move_item_down(&mut self) {
         match self.state.active_section {
-            ActiveSection::Tracks => {
-                if self.state.active_tab == ActiveTab::Playlists {
-                    self.move_playlist_edit_step(1);
-                }
+            ActiveSection::Tracks if self.state.active_tab == ActiveTab::Playlists => {
+                self.move_playlist_edit_step(1);
             }
             ActiveSection::Queue => {
                 self.move_queue_item_down().await;
@@ -1684,20 +1665,14 @@ impl App {
                 _ => {}
             },
             ActiveSection::Tracks => match self.state.active_tab {
-                ActiveTab::Library => {
-                    if !self.tracks.is_empty() {
-                        self.track_select_by_index(0);
-                    }
+                ActiveTab::Library if !self.tracks.is_empty() => {
+                    self.track_select_by_index(0);
                 }
-                ActiveTab::Albums => {
-                    if !self.album_tracks.is_empty() {
-                        self.album_track_select_by_index(0);
-                    }
+                ActiveTab::Albums if !self.album_tracks.is_empty() => {
+                    self.album_track_select_by_index(0);
                 }
-                ActiveTab::Playlists => {
-                    if !self.playlist_tracks.is_empty() {
-                        self.playlist_track_select_by_index(0);
-                    }
+                ActiveTab::Playlists if !self.playlist_tracks.is_empty() => {
+                    self.playlist_track_select_by_index(0);
                 }
                 _ => {}
             },
@@ -1718,38 +1693,26 @@ impl App {
     fn go_last(&mut self) {
         match self.state.active_section {
             ActiveSection::List => match self.state.active_tab {
-                ActiveTab::Library => {
-                    if !self.artists.is_empty() {
-                        self.artist_select_by_index(self.artists.len() - 1);
-                    }
+                ActiveTab::Library if !self.artists.is_empty() => {
+                    self.artist_select_by_index(self.artists.len() - 1);
                 }
-                ActiveTab::Albums => {
-                    if !self.albums.is_empty() {
-                        self.album_select_by_index(self.albums.len() - 1);
-                    }
+                ActiveTab::Albums if !self.albums.is_empty() => {
+                    self.album_select_by_index(self.albums.len() - 1);
                 }
-                ActiveTab::Playlists => {
-                    if !self.playlists.is_empty() {
-                        self.playlist_select_by_index(self.playlists.len() - 1);
-                    }
+                ActiveTab::Playlists if !self.playlists.is_empty() => {
+                    self.playlist_select_by_index(self.playlists.len() - 1);
                 }
                 _ => {}
             },
             ActiveSection::Tracks => match self.state.active_tab {
-                ActiveTab::Library => {
-                    if !self.tracks.is_empty() {
-                        self.track_select_by_index(self.tracks.len() - 1);
-                    }
+                ActiveTab::Library if !self.tracks.is_empty() => {
+                    self.track_select_by_index(self.tracks.len() - 1);
                 }
-                ActiveTab::Albums => {
-                    if !self.album_tracks.is_empty() {
-                        self.album_track_select_by_index(self.album_tracks.len() - 1);
-                    }
+                ActiveTab::Albums if !self.album_tracks.is_empty() => {
+                    self.album_track_select_by_index(self.album_tracks.len() - 1);
                 }
-                ActiveTab::Playlists => {
-                    if !self.playlist_tracks.is_empty() {
-                        self.playlist_track_select_by_index(self.playlist_tracks.len() - 1);
-                    }
+                ActiveTab::Playlists if !self.playlist_tracks.is_empty() => {
+                    self.playlist_track_select_by_index(self.playlist_tracks.len() - 1);
                 }
                 _ => {}
             },
@@ -2253,17 +2216,14 @@ impl App {
     }
 
     async fn emplace_temp(&mut self, start: bool) {
-        match self.state.active_section {
-            ActiveSection::Tracks => {
-                if let Some((items, selected)) = self.get_active_tracks_and_selected() {
-                    if start {
-                        self.push_next_to_temporary_queue(&items, selected).await;
-                    } else {
-                        self.push_to_temporary_queue(&items, selected, 1).await;
-                    }
+        if self.state.active_section == ActiveSection::Tracks {
+            if let Some((items, selected)) = self.get_active_tracks_and_selected() {
+                if start {
+                    self.push_next_to_temporary_queue(&items, selected).await;
+                } else {
+                    self.push_to_temporary_queue(&items, selected, 1).await;
                 }
             }
-            _ => {}
         }
     }
 
@@ -2288,6 +2248,7 @@ impl App {
                     self.append_to_main_queue(&album_tracks, 0).await;
                     return;
                 }
+                #[allow(clippy::cloned_ref_to_slice_refs)]
                 self.append_to_main_queue(&[track.clone()], 0).await;
             }
             ActiveTab::Albums => {
@@ -2295,6 +2256,7 @@ impl App {
                 let Some(track) = self.album_tracks.iter().find(|t| t.id == id) else {
                     return;
                 };
+                #[allow(clippy::cloned_ref_to_slice_refs)]
                 self.append_to_main_queue(&[track.clone()], 0).await;
             }
             ActiveTab::Playlists => {
@@ -2302,6 +2264,7 @@ impl App {
                 let Some(track) = self.playlist_tracks.iter().find(|t| t.id == id) else {
                     return;
                 };
+                #[allow(clippy::cloned_ref_to_slice_refs)]
                 self.append_to_main_queue(&[track.clone()], 0).await;
             }
             _ => {}
@@ -2786,18 +2749,14 @@ impl App {
                                 Ok(tracks) if !tracks.is_empty() => Some(tracks),
                                 _ => {
                                     if let Some(client) = self.client.as_ref() {
-                                        if let Ok(tracks) = client.discography(&artist.id).await {
-                                            Some(tracks)
-                                        } else {
-                                            None
-                                        }
+                                        client.discography(&artist.id).await.ok()
                                     } else {
                                         None
                                     }
                                 }
                             };
                         if let Some(discography) = discography {
-                            if let Some(_) = discography.iter().find(|t| t.id == album_id) {
+                            if discography.iter().any(|t| t.id == album_id) {
                                 artist_id = artist.id.clone();
                                 break;
                             }
@@ -2863,18 +2822,14 @@ impl App {
                                 Ok(tracks) if !tracks.is_empty() => Some(tracks),
                                 _ => {
                                     if let Some(client) = self.client.as_ref() {
-                                        if let Ok(tracks) = client.discography(&artist.id).await {
-                                            Some(tracks)
-                                        } else {
-                                            None
-                                        }
+                                        client.discography(&artist.id).await.ok()
                                     } else {
                                         None
                                     }
                                 }
                             };
                         if let Some(discography) = discography {
-                            if let Some(_) = discography.iter().find(|t| t.id == track_id) {
+                            if discography.iter().any(|t| t.id == track_id) {
                                 artist_id = artist.id.clone();
                                 break;
                             }

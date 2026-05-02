@@ -114,7 +114,7 @@ pub fn render_help_modal(
             .or_default()
             .entry(action.clone())
             .or_default()
-            .push(key.clone());
+            .push(*key);
     }
 
     let mut rows = Vec::new();

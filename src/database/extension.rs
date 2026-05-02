@@ -89,10 +89,8 @@ impl tui::App {
             }
             Status::AllDownloaded => {
                 // pretty nifty huh
-                if let Some(popup) = &mut self.popup.current_menu {
-                    if let PopupMenu::GlobalRoot { downloading, .. } = popup {
-                        *downloading = false;
-                    }
+                if let Some(PopupMenu::GlobalRoot { downloading, .. }) = &mut self.popup.current_menu {
+                    *downloading = false;
                 }
                 self.download_item = None;
             }
@@ -128,10 +126,8 @@ impl tui::App {
             }
             Status::TrackDownloading { track } => {
                 self.download_item = Some(DownloadItem { name: track.name, progress: 0.0 });
-                if let Some(popup) = &mut self.popup.current_menu {
-                    if let PopupMenu::GlobalRoot { downloading, .. } = popup {
-                        *downloading = true;
-                    }
+                if let Some(PopupMenu::GlobalRoot { downloading, .. }) = &mut self.popup.current_menu {
+                    *downloading = true;
                 }
                 if let Some(track) = self.tracks.iter_mut().find(|t| t.id == track.id) {
                     track.download_status = DownloadStatus::Downloading;
@@ -289,7 +285,7 @@ impl tui::App {
                     .unwrap_or_else(|_| core::panic!("Fatal error, failed to connect to new database. Please remove it and try again: {}", db_path)));
 
             sqlx::query("PRAGMA journal_mode = WAL;").execute(&*pool).await?;
-            run_migrations(&*pool).await?;
+            run_migrations(&pool).await?;
 
             println!(" - Database created. Fetching library data (this may take a while)...");
 
@@ -311,7 +307,7 @@ impl tui::App {
                 }),
         );
         sqlx::query("PRAGMA journal_mode = WAL;").execute(&*pool).await?;
-        run_migrations(&*pool).await?;
+        run_migrations(&pool).await?;
 
         log::info!(" - Database connected: {}", db_path);
 
@@ -352,8 +348,9 @@ impl tui::App {
                 return Err("Database requires an update, but you are offline. Please connect to the internet and try again.".into());
             }
             let client = client.as_ref().unwrap().clone();
+            #[allow(clippy::question_mark)]
             if let Err(e) = data_updater(Arc::clone(&pool), None, client).await {
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
 
@@ -439,8 +436,7 @@ async fn applied_versions(pool: &Pool<Sqlite>) -> Result<HashSet<i64>, sqlx::Err
 }
 
 /// ------------ helpers ------------
-
-/// these are the libraries the user should see data from
+////// these are the libraries the user should see data from
 pub async fn selected_library_ids(pool: &Pool<Sqlite>) -> Vec<String> {
     sqlx::query_scalar(r#"SELECT id FROM libraries WHERE selected = 1"#)
         .fetch_all(pool)
@@ -741,7 +737,12 @@ pub async fn get_all_artists(pool: &SqlitePool) -> Result<Vec<Artist>, Box<dyn s
 
     let rows = q.fetch_all(pool).await?;
 
-    Ok(rows.into_iter().map(|r| serde_json::from_str(&r.0).unwrap()).collect())
+    let tracks: Vec<Artist> = rows
+        .into_iter()
+        .map(|r| serde_json::from_str(&r.0).map_err(|e| Box::new(e) as Box<dyn std::error::Error>))
+        .collect::<Result<_, _>>()?;
+
+    Ok(tracks)
 }
 
 pub async fn get_discography(
@@ -792,7 +793,7 @@ pub async fn get_discography(
 
     let mut tracks = Vec::new();
     for (json_str, download_status, disliked) in records {
-        let mut track: DiscographySong = serde_json::from_str(&json_str).unwrap();
+        let mut track: DiscographySong = serde_json::from_str(&json_str)?;
         track.download_status = match download_status.as_str() {
             "Downloaded" => DownloadStatus::Downloaded,
             "Queued" => DownloadStatus::Queued,
@@ -928,7 +929,7 @@ pub async fn get_all_albums(pool: &SqlitePool) -> Result<Vec<Album>, Box<dyn std
     };
 
     let albums: Vec<Album> =
-        records.into_iter().map(|r| serde_json::from_str(&r.0).unwrap()).collect();
+        records.into_iter().map(|r| serde_json::from_str(&r.0)).collect::<Result<_, _>>()?;
 
     Ok(albums)
 }
@@ -987,7 +988,7 @@ pub async fn get_artists_with_tracks(
     };
 
     let artists: Vec<Artist> =
-        records.into_iter().map(|r| serde_json::from_str(&r.0).unwrap()).collect();
+        records.into_iter().map(|r| serde_json::from_str(&r.0)).collect::<Result<_, _>>()?;
 
     Ok(artists)
 }
@@ -1028,7 +1029,7 @@ pub async fn get_albums_with_tracks(
     };
 
     let albums: Vec<Album> =
-        records.into_iter().map(|r| serde_json::from_str(&r.0).unwrap()).collect();
+        records.into_iter().map(|r| serde_json::from_str(&r.0)).collect::<Result<_, _>>()?;
 
     Ok(albums)
 }
@@ -1055,7 +1056,7 @@ pub async fn get_playlists_with_tracks(
     .await?;
 
     let playlists: Vec<Playlist> =
-        records.iter().map(|r| serde_json::from_str(&r.0).unwrap()).collect();
+        records.iter().map(|r| serde_json::from_str(&r.0)).collect::<Result<_, _>>()?;
 
     Ok(playlists)
 }
@@ -1090,10 +1091,10 @@ pub async fn get_tracks(
 
     let rows = query.fetch_all(pool).await?;
 
-    let tracks = rows
+    let tracks: Vec<DiscographySong> = rows
         .into_iter()
-        .map(|(json,)| serde_json::from_str::<DiscographySong>(&json).unwrap())
-        .collect();
+        .map(|(json,)| serde_json::from_str(&json))
+        .collect::<Result<_, _>>()?;
 
     Ok(tracks)
 }

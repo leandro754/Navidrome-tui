@@ -65,24 +65,8 @@ fn main() {
     let force_server_select = args.contains(&String::from("--select-server"));
 
     if !args.contains(&String::from("--no-splash")) {
-        println!(
-"
-  \x1b[35m    \u{28e0}\u{28f4}\u{28b6}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28b6}\u{28e6}\u{28c4}    \x1b[0m
-  \x1b[35m  \u{28f4}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28f6}\u{28e6}  \x1b[0m
-  \x1b[35m \u{28fe}\u{28ff}\u{28ff}\u{285b}\u{2800}\u{2800}\u{2800}\u{2800}\u{2800}\u{2800}\u{281b}\u{28ff}\u{28ff}\u{28ff} \x1b[0m   \x1b[1mnavidrome-tui\x1b[0m  v{ver}
-  \x1b[35m\u{28ff}\u{28ff}\u{28d7}\u{2800}\u{2800}\u{2818}\u{2803}\u{2800}\u{2800}\u{2800}\u{2800}\u{28bc}\u{28ff}\u{28ff}\x1b[0m
-  \x1b[35m\u{28ff}\u{28ff}\u{28c7}\u{2800}\u{2800}\u{28f0}\u{28ff}\u{28f0}\u{2800}\u{2800}\u{28b8}\u{28ff}\u{28ff}\x1b[0m   \x1b[2mlibmpv {maj}.{min} ({ver2})\x1b[0m
-  \x1b[35m\u{28ff}\u{28ff}\u{28c7}\u{2800}\u{2800}\u{28f0}\u{28ff}\u{28f0}\u{2800}\u{2800}\u{28b8}\u{28ff}\u{28ff}\x1b[0m
-  \x1b[35m\u{28ff}\u{28ff}\u{28e7}\u{2800}\u{2800}\u{2800}\u{2809}\u{2800}\u{2800}\u{2800}\u{2800}\u{28fc}\u{28ff}\u{28ff}\x1b[0m   \x1b[2mThis is free software (GPLv3).\x1b[0m
-  \x1b[35m \u{28ff}\u{28ff}\u{28ff}\u{283b}\u{2800}\u{2800}\u{2800}\u{2800}\u{2800}\u{28f4}\u{28ff}\u{28ff}\u{28ff} \x1b[0m
-  \x1b[35m  \u{283f}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{28ff}\u{283f}  \x1b[0m
-  \x1b[35m    \u{2809}\u{281b}\u{283f}\u{28ff}\u{28ff}\u{283f}\u{281b}\u{2809}    \x1b[0m
-",
-            ver = version,
-            maj = MPV_CLIENT_API_MAJOR,
-            min = MPV_CLIENT_API_MINOR,
-            ver2 = MPV_CLIENT_API_VERSION
-        );
+        print_splash();
+        print_info(version);
     }
 
     let panicked = std::sync::Arc::new(AtomicBool::new(false));
@@ -233,6 +217,53 @@ fn print_help() {
 
     println!("\nControls:");
     println!("  For a list of controls, press '?' in the application.");
+}
+
+pub fn print_splash() {
+    let p = "\x1b[38;5;135m"; // violeta
+    let d = "\x1b[2;37m";     // gris dim
+    let r = "\x1b[0m";
+    #[allow(unused_variables)]
+    let b = "\x1b[1m";
+    #[allow(unused_variables)]
+    let y = "\x1b[33m";       // amarillo para warnings
+    #[allow(unused_variables)]
+    let c = "\x1b[38;5;177m"; // violeta claro
+
+    println!();
+    println!("{d}⠀⠀⠀⠀⠀⠀⠀⠀{r}{p}⣀⣤⣶⣶⣾⣿⣿⣿⣿⣷⣶⣶⣤⣀{r}{d}⠀⠀⠀⠀⠀⠀⠀⠀{r}");
+    println!("{d}⠀⠀⠀⠀⠀{r}{p}⣠⢔⣫⢷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣄{r}{d}⠀⠀⠀⠀⠀{r}");
+    println!("{d}⠀⠀⠀{r}{p}⣠⢊⡴⡫⢚⡽⣟⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄{r}{d}⠀⠀⠀{r}");
+    println!("{d}⠀⠀{r}{p}⡴⣱⢫⢎⡔⡩⣚⠵⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦{r}{d}⠀⠀{r}");
+    println!("{d}⠀{r}{p}⣼⣽⣳⣣⢯⣞⡜⡱⣫⢷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧{r}{d}⠀{r}");
+    println!("{p}⢸⣿⣿⣿⣿⣿⣿⣾⡽⣱⣫{r}{d}⠞⠉⠀⠀⠀⠀⠉⠻{r}{p}⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇{r}");
+    println!("{p}⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷{r}{d}⠃⠀⠀⠀⠀⠀⠀⠀⠀{r}{p}⢹⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷{r}");
+    println!("{p}⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿{r}{d}⠀⠀⠀⠀⠘⠃⠀⠀⠀{r}{p}⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿{r}");
+    println!("{p}⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣆{r}{d}⠀⠀⠀⠀⠀⠀⠀{r}{p}⢀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿{r}");
+    println!("{p}⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣀⣀⣀⣠⣴⢟⡵⣳⢯⢿⣿⡟⣿⣿⣿⣿⡇{r}");
+    println!("{d}⠀{r}{p}⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣞⡵⣫⢏⢞⡽⡽⣻⢯⡟{r}{d}⠀{r}");
+    println!("{d}⠀⠀{r}{p}⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣚⢕⡡⢊⠜⡵⣣⠟{r}{d}⠀⠀{r}");
+    println!("{d}⠀⠀⠀{r}{p}⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⢷⣫⢖⡥⢊⡴⠋{r}{d}⠀⠀⠀{r}");
+    println!("{d}⠀⠀⠀⠀⠀{r}{p}⠙⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⣞⣭⠞⠋{r}{d}⠀⠀⠀⠀⠀{r}");
+    println!("{d}⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⠿⢿{r}{p}⣿⣿⣿⣿{r}{d}⡿⠿⠟⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀{r}");
+    println!();
+}
+
+pub fn print_info(version: &str) {
+    let p = "\x1b[38;5;135m";
+    let r = "\x1b[0m";
+    #[allow(unused_variables)]
+    let y = "\x1b[33m";
+    let dim = "\x1b[2;37m";
+
+    println!(" {p}navidrome-tui{r}  {dim}v{version}{r}");
+    println!();
+    println!(" {dim}This is free software (GPLv3).{r}");
+    println!();
+    println!(" {p}-{r} Thank you for trying navidrome-tui! <3");
+    println!(" {p}-{r} Issues or missing features? Report them here:");
+    println!("   {p}https://github.com/leandro754/Navidrome-tui{r}");
+    println!();
 }
 
 // fn seekable_ranges(demuxer_cache_state: &MpvNode) -> Option<Vec<(f64, f64)>> {

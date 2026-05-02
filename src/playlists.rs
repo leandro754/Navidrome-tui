@@ -103,7 +103,7 @@ impl App {
         };
 
         let lyrics_slot_constraints = if show_panel {
-            if has_lyrics && !self.lyrics.as_ref().map_or(true, |(_, l, _)| l.len() == 1) {
+            if has_lyrics && self.lyrics.as_ref().is_some_and(|(_, l, _)| l.len() != 1) {
                 vec![
                     Constraint::Percentage(68),
                     Constraint::Percentage(32),

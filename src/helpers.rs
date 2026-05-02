@@ -84,7 +84,7 @@ pub fn search_ranked_indices<T: Searchable>(
 
 pub fn search_ranked_refs<'a, T: Searchable>(
     items: &'a [T],
-    search_term: &String,
+    search_term: &str,
     empty_returns_all: bool,
 ) -> Vec<&'a T> {
     search_ranked_indices(items, search_term, empty_returns_all)
@@ -132,11 +132,7 @@ pub fn extract_album_order(tracks: &[DiscographySong]) -> Vec<String> {
     tracks
         .iter()
         .filter_map(|t| {
-            if let Some(rest) = t.id.strip_prefix("_album_") {
-                Some(rest.to_string())
-            } else {
-                None
-            }
+            t.id.strip_prefix("_album_").map(|rest| rest.to_string())
         })
         .collect()
 }
@@ -167,10 +163,10 @@ pub fn centered_rect_percent(width_percent: u16, height_percent: u16, area: Rect
     horizontal[1]
 }
 
-pub fn render_scrollbar<'a>(
+pub fn render_scrollbar(
     frame: &mut Frame,
     area: Rect,
-    state: &'a mut ratatui::widgets::ScrollbarState,
+    state: &mut ratatui::widgets::ScrollbarState,
     theme: &Theme, // pass only what you need
 ) {
     let scrollbar = Scrollbar::default()
