@@ -431,29 +431,86 @@ impl Client {
         }
     }
 
-    /// Fetches the public album art URL for a given album ID via the Subsonic `getAlbumInfo` endpoint.
-    /// Navidrome proxies Last.fm/MusicBrainz image URLs here, so the returned URL is publicly
-    /// accessible without credentials — safe to pass directly to Discord Rich Presence.
-    pub async fn get_album_art_url(&self, album_id: &str) -> Option<String> {
-        let url = format!(
+    /// Fetches a public album art URL for use in Discord Rich Presence.
+    ///
+    /// Strategy (in order):
+    /// 1. `getAlbumInfo2` — Navidrome proxies Last.fm/MusicBrainz URLs (no credentials in URL).
+    /// 2. iTunes Search API — public, no auth, very broad coverage.
+    /// 3. Returns `None` → caller falls back to `cover-placeholder`.
+    pub async fn get_album_art_url(
+        &self,
+        album_id: &str,
+        artist: &str,
+        album: &str,
+    ) -> Option<String> {
+        // --- Attempt 1: Navidrome getAlbumInfo2 ---
+        let nd_url = format!(
             "{}/rest/getAlbumInfo2.view?id={}&{}",
             self.base_url, album_id, self.auth_query()
         );
-        let resp = self
+        if let Ok(resp) = self
             .http_client
+            .get(&nd_url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+        {
+            if let Ok(root) = resp.json::<AlbumInfoResponseRoot>().await {
+                if root.response.status == "ok" {
+                    if let Some(info) = root.response.album_info {
+                        let art = info.large_image_url.or(info.small_image_url);
+                        if art.is_some() {
+                            log::debug!("Discord: album art from Navidrome/Last.fm: {:?}", art);
+                            return art;
+                        }
+                    }
+                }
+            }
+        }
+        log::debug!("Discord: getAlbumInfo2 returned no art for album_id={}, trying iTunes...", album_id);
+
+        // --- Attempt 2: iTunes Search API (completely public) ---
+        Self::get_album_art_from_itunes(&self.http_client, artist, album).await
+    }
+
+    /// Query the iTunes Search API for album art by artist + album name.
+    /// Returns a high-res (600×600) artwork URL or None.
+    async fn get_album_art_from_itunes(
+        client: &reqwest::Client,
+        artist: &str,
+        album: &str,
+    ) -> Option<String> {
+        #[derive(serde::Deserialize)]
+        struct ItunesResults {
+            results: Vec<ItunesAlbum>,
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ItunesAlbum {
+            artwork_url100: Option<String>,
+        }
+
+        let term = format!("{} {}", artist, album);
+        let encoded: String = url::form_urlencoded::byte_serialize(term.as_bytes()).collect();
+        let url = format!(
+            "https://itunes.apple.com/search?term={}&media=music&entity=album&limit=1",
+            encoded
+        );
+
+        let resp = client
             .get(&url)
             .timeout(Duration::from_secs(5))
             .send()
             .await
             .ok()?;
 
-        let root: AlbumInfoResponseRoot = resp.json().await.ok()?;
-        if root.response.status != "ok" {
-            return None;
-        }
-        let info = root.response.album_info?;
-        // Prefer the large image, fall back to small
-        info.large_image_url.or(info.small_image_url)
+        let data: ItunesResults = resp.json().await.ok()?;
+        let art_url = data.results.into_iter().next()?.artwork_url100?;
+
+        // Replace 100x100 thumbnail with 600x600 for Discord
+        let hires = art_url.replace("100x100bb", "600x600bb");
+        log::debug!("Discord: album art from iTunes: {}", hires);
+        Some(hires)
     }
 
     pub async fn music_libraries(&self) -> Result<Vec<LibraryView>, reqwest::Error> {

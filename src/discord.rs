@@ -85,7 +85,11 @@ pub fn t_discord(mut rx: Receiver<DiscordCommand>, client_id: u64) {
                     if track.album_id != last_art_album_id {
                         last_art_album_id = track.album_id.clone();
                         last_art_url =
-                            rt.block_on(client.get_album_art_url(&track.album_id));
+                            rt.block_on(client.get_album_art_url(
+                                &track.album_id,
+                                &track.artist,
+                                &track.album,
+                            ));
                         log::debug!(
                             "Discord: resolved album art URL: {:?}",
                             last_art_url
