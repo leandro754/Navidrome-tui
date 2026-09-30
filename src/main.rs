@@ -35,6 +35,8 @@ use crossterm::{
 };
 // keyboard enhancement flags are used to allow for certain normally blocked key combinations... e.g. ctrl+enter...
 use crossterm::event::PopKeyboardEnhancementFlags;
+#[cfg(unix)]
+use crossterm::event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags};
 use libmpv2::{MPV_CLIENT_API_MAJOR, MPV_CLIENT_API_MINOR, MPV_CLIENT_API_VERSION};
 use ratatui::prelude::{CrosstermBackend, Terminal};
 

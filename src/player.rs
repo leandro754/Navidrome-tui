@@ -200,8 +200,9 @@ impl App {
         #[cfg(target_os = "linux")]
         {
             if let Some(ref mut controls) = self.controls {
-                let _ =
-                    controls.set_volume(self.state.current_playback_state.volume as f64 / 100.0);
+                let _ = controls
+                    .controls
+                    .set_volume(self.state.current_playback_state.volume as f64 / 100.0);
             }
         }
     }
@@ -215,8 +216,9 @@ impl App {
         #[cfg(target_os = "linux")]
         {
             if let Some(ref mut controls) = self.controls {
-                let _ =
-                    controls.set_volume(self.state.current_playback_state.volume as f64 / 100.0);
+                let _ = controls
+                    .controls
+                    .set_volume(self.state.current_playback_state.volume as f64 / 100.0);
             }
         }
     }
