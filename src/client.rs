@@ -166,7 +166,6 @@ struct SubsonicArtistDetails {
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct SubsonicSong {
     id: String,
     title: String,
@@ -175,6 +174,8 @@ struct SubsonicSong {
     album_id: Option<String>,
     duration: Option<u64>,
     track: Option<u64>,
+    disc_number: Option<u64>,
+    year: Option<u64>,
     genre: Option<String>,
     created: Option<String>,
     starred: Option<String>,
@@ -536,7 +537,7 @@ impl Client {
         if let Some(album) = root.response.album {
             if let Some(list) = album.song {
                 for s in list {
-                    songs.push(self.subsonic_song_to_discography_song(s));
+                    songs.push(Self::subsonic_song_to_discography_song(s));
                 }
             }
         }
@@ -590,7 +591,7 @@ impl Client {
         if let Some(res) = root.response.search_result3 {
             if let Some(list) = res.song {
                 for s in list {
-                    songs.push(self.subsonic_song_to_discography_song(s));
+                    songs.push(Self::subsonic_song_to_discography_song(s));
                 }
             }
         }
@@ -631,7 +632,7 @@ impl Client {
                         keep = false;
                     }
                     if keep {
-                        songs.push(self.subsonic_song_to_discography_song(s));
+                        songs.push(Self::subsonic_song_to_discography_song(s));
                     }
                 }
             }
@@ -792,8 +793,7 @@ impl Client {
             };
         if let Some(pl) = root.response.playlist {
             let total = pl.song_count;
-            let items =
-                pl.entry.into_iter().map(|s| self.subsonic_song_to_discography_song(s)).collect();
+            let items = pl.entry.into_iter().map(Self::subsonic_song_to_discography_song).collect();
             return Ok(PlaylistResult { items, total_record_count: total });
         }
         Ok(PlaylistResult { items: vec![], total_record_count: 0 })
@@ -985,15 +985,29 @@ impl Client {
         }
     }
 
-    fn subsonic_song_to_discography_song(&self, s: SubsonicSong) -> DiscographySong {
-        let artist_name = s.artist.clone().unwrap_or_default();
-        let album_name = s.album.clone().unwrap_or_default();
+    fn subsonic_song_to_discography_song(s: SubsonicSong) -> DiscographySong {
+        let artist_name = s.artist.unwrap_or_default();
         let duration_ms = s.duration.unwrap_or(0) * 1000;
         let ticks = duration_ms * 10000;
-        let mut d_song = DiscographySong { id: s.id.clone(), name: s.title.clone(), album: album_name.clone(), album_artist: artist_name.clone(), album_id: s.album_id.unwrap_or_default(), run_time_ticks: ticks, artists: vec![artist_name.clone()], ..Default::default() };
+        let mut d_song = DiscographySong {
+            id: s.id,
+            name: s.title,
+            album: s.album.unwrap_or_default(),
+            album_artist: artist_name.clone(),
+            album_id: s.album_id.unwrap_or_default(),
+            // index_number / parent_index_number drive the track and disc
+            // ordering within an album in group_tracks_into_albums
+            index_number: s.track.unwrap_or_default(),
+            parent_index_number: s.disc_number.unwrap_or_default(),
+            production_year: s.year.unwrap_or_default(),
+            date_created: s.created.unwrap_or_default(),
+            run_time_ticks: ticks,
+            artists: vec![artist_name.clone()],
+            ..Default::default()
+        };
         d_song.user_data.is_favorite = s.starred.is_some();
         d_song.album_artists =
-            vec![Artist { id: String::new(), name: artist_name.clone(), ..Default::default() }];
+            vec![Artist { id: String::new(), name: artist_name, ..Default::default() }];
         d_song.genres = s.genre.into_iter().collect();
         d_song
     }
@@ -1173,5 +1187,33 @@ impl Searchable for Playlist {
     }
     fn name(&self) -> &str {
         &self.name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Impact: group_tracks_into_albums orders tracks by these fields, so a
+    // missing mapping leaves every track tied at 0 and scrambles album order.
+    // Should: carry the Subsonic track number, disc number and year onto the song.
+    #[test]
+    fn subsonic_song_should_map_track_disc_and_year_into_discography_song() {
+        let json = r#"{
+            "id": "t1",
+            "title": "Song",
+            "albumId": "al1",
+            "track": 7,
+            "discNumber": 2,
+            "year": 1997
+        }"#;
+        let subsonic: SubsonicSong = serde_json::from_str(json).unwrap();
+
+        let song = Client::subsonic_song_to_discography_song(subsonic);
+
+        assert_eq!(
+            (song.index_number, song.parent_index_number, song.production_year),
+            (7, 2, 1997)
+        );
     }
 }
